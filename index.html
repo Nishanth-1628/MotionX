@@ -200,6 +200,15 @@
           <canvas id="avatar-preview-canvas" width="120" height="120"></canvas>
         </div>
 
+        <div class="menu-player-bar">
+          <div class="pilot-badge-text">
+            <span class="pilot-icon">👤</span>
+            <span class="pilot-label">PILOT:</span>
+            <span class="pilot-name" id="menu-current-pilot-name">GUEST</span>
+          </div>
+          <button id="btn-menu-change-pilot" class="btn-inline-pill" type="button">EDIT NAME</button>
+        </div>
+
         <div class="menu-action-buttons">
           <button id="btn-menu-enable-camera" class="cyber-btn btn-hero">
             <span class="btn-icon">📷</span>
@@ -212,6 +221,10 @@
           <button id="btn-menu-level-select" class="cyber-btn cyber-btn-secondary">
             <span class="btn-icon">🗺️</span>
             <span>LEVEL SELECT (20 LEVELS)</span>
+          </button>
+          <button id="btn-menu-leaderboard" class="cyber-btn cyber-btn-secondary">
+            <span class="btn-icon">🏆</span>
+            <span>LEADERBOARD</span>
           </button>
           <button id="btn-menu-how-to-play" class="cyber-btn cyber-btn-secondary">
             <span class="btn-icon">📖</span>
@@ -313,6 +326,7 @@
         <div class="modal-btn-stack">
           <button id="btn-complete-next" class="cyber-btn cyber-btn-primary">NEXT LEVEL</button>
           <button id="btn-complete-replay" class="cyber-btn cyber-btn-secondary">REPLAY LEVEL</button>
+          <button id="btn-complete-leaderboard" class="cyber-btn cyber-btn-secondary">🏆 LEADERBOARD</button>
           <button id="btn-complete-level-select" class="cyber-btn cyber-btn-ghost">LEVEL SELECT</button>
         </div>
       </div>
@@ -356,6 +370,7 @@
         <div class="modal-btn-stack">
           <button id="btn-pause-resume" class="cyber-btn cyber-btn-primary">RESUME</button>
           <button id="btn-pause-restart" class="cyber-btn cyber-btn-secondary">RESTART ATTEMPT</button>
+          <button id="btn-pause-leaderboard" class="cyber-btn cyber-btn-secondary">🏆 LEADERBOARD</button>
           <button id="btn-pause-settings" class="cyber-btn cyber-btn-secondary">SETTINGS</button>
           <button id="btn-pause-level-select" class="cyber-btn cyber-btn-secondary">LEVEL SELECT</button>
           <button id="btn-pause-main-menu" class="cyber-btn cyber-btn-ghost">MAIN MENU</button>
@@ -442,9 +457,9 @@
               <small>Calibrate horizontal running speed for hand control</small>
             </div>
             <select id="set-player-speed" class="cyber-input-select">
-              <option value="slow">SLOW & PRECISE (2.7)</option>
-              <option value="normal" selected>NORMAL (3.0) [Default]</option>
-              <option value="fast">FAST (3.8)</option>
+              <option value="slow">SLOW & PRECISE (3.38)</option>
+              <option value="normal" selected>NORMAL (3.75) [Default]</option>
+              <option value="fast">FAST (4.75)</option>
             </select>
           </div>
 
@@ -507,6 +522,90 @@
 
         <div class="modal-btn-row">
           <button id="btn-how-to-play-back" class="cyber-btn cyber-btn-secondary">BACK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10. PLAYER NAME REGISTRATION MODAL (ASK ONLY NAME) -->
+    <div id="modal-player-name" class="screen-overlay hidden modal-backdrop">
+      <div class="modal-card mini-card player-name-card">
+        <div class="modal-badge-icon">👤</div>
+        <h2 class="modal-title">PLAYER CALLSIGN</h2>
+        <p class="modal-desc">Enter only your player name for the MotionX Leaderboard.</p>
+
+        <form id="form-player-name" class="player-name-form" onsubmit="return false;">
+          <div class="input-field-group">
+            <label for="input-player-name" class="cyber-input-label">PLAYER NAME</label>
+            <input
+              type="text"
+              id="input-player-name"
+              class="cyber-input-text"
+              placeholder="Enter name (e.g. Phoenix)"
+              maxlength="16"
+              autocomplete="off"
+              spellcheck="false"
+              required
+            />
+          </div>
+
+          <div id="player-name-error" class="player-name-error hidden" role="alert">name is existed</div>
+
+          <div class="modal-btn-stack">
+            <button type="submit" id="btn-submit-player-name" class="cyber-btn cyber-btn-primary">
+              CONFIRM NAME
+            </button>
+            <button type="button" id="btn-cancel-player-name" class="cyber-btn cyber-btn-secondary">
+              CANCEL
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 11. LEADERBOARD SCREEN -->
+    <div id="screen-leaderboard" class="screen-overlay hidden">
+      <div class="modal-card wide-card leaderboard-card">
+        <div class="leaderboard-header-row">
+          <div class="leaderboard-title-group">
+            <div class="brand-tag">GLOBAL RANKINGS</div>
+            <h2 class="modal-title leaderboard-title">🏆 HALL OF FAME</h2>
+          </div>
+          <button id="btn-leaderboard-change-name" class="cyber-btn-sm cyber-btn-secondary" type="button">
+            <span>👤</span>
+            <span id="lb-current-player-tag">CALLSIGN: GUEST</span>
+          </button>
+        </div>
+
+        <div class="leaderboard-stats-banner">
+          <div class="lb-stat-box">
+            <span class="lb-stat-label">YOUR RANK</span>
+            <span class="lb-stat-val highlight" id="lb-your-rank">-</span>
+          </div>
+          <div class="lb-stat-box">
+            <span class="lb-stat-label">YOUR SCORE</span>
+            <span class="lb-stat-val" id="lb-your-score">0</span>
+          </div>
+          <div class="lb-stat-box">
+            <span class="lb-stat-label">CLEARED</span>
+            <span class="lb-stat-val" id="lb-your-cleared">0 / 20</span>
+          </div>
+        </div>
+
+        <div class="leaderboard-table-container">
+          <div class="leaderboard-table-header">
+            <span class="col-rank">RANK</span>
+            <span class="col-player">PLAYER</span>
+            <span class="col-levels">LEVELS</span>
+            <span class="col-score">SCORE</span>
+          </div>
+          <div class="leaderboard-list-scroll" id="leaderboard-list-container">
+            <!-- Dynamically populated rows -->
+          </div>
+        </div>
+
+        <div class="modal-btn-row">
+          <button id="btn-leaderboard-back" class="cyber-btn cyber-btn-secondary" type="button">BACK</button>
+          <button id="btn-leaderboard-play" class="cyber-btn cyber-btn-primary" type="button">PLAY GAME</button>
         </div>
       </div>
     </div>
