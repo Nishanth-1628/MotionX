@@ -20,12 +20,24 @@
     fistAttackEnabled: true,
     deadZone: 'medium',    // 'low' (0.35-0.65), 'medium' (0.40-0.60), 'high' (0.30-0.70)
     smoothing: 'medium',   // 'low' (0.55), 'medium' (0.35), 'high' (0.20)
-    playerSpeed: 'normal',   // 'slow' (2.7), 'normal' (3.0) [Default], 'fast' (3.8)
+    playerSpeed: 'normal',   // 'slow' (3.38), 'normal' (3.75) [Default], 'fast' (4.75)
     music: true,
     sfx: true
   };
 
+  const STORAGE_KEY_LEADERBOARD = 'motionx_leaderboard_v1';
+
+  const DEFAULT_LEADERBOARD = [
+    { name: 'CYBER_NEXUS', score: 25000, levels: 20, bestAttempts: 20 },
+    { name: 'NEO_RUNNER', score: 19800, levels: 18, bestAttempts: 25 },
+    { name: 'SYNTH_BLADE', score: 14500, levels: 14, bestAttempts: 22 },
+    { name: 'PHANTOM_99', score: 10200, levels: 10, bestAttempts: 18 },
+    { name: 'GLITCH_FOX', score: 6800, levels: 7, bestAttempts: 13 },
+    { name: 'BYTE_STRIKER', score: 3200, levels: 3, bestAttempts: 6 }
+  ];
+
   let gameStateData = {
+    playerName: '',
     unlockedLevel: 1,
     completedLevels: [],
     bestAttempts: {},       // { [levelId]: bestAttemptsCount }
@@ -39,6 +51,7 @@
       if (raw) {
         const parsed = JSON.parse(raw);
         gameStateData = {
+          playerName: parsed.playerName || '',
           unlockedLevel: parsed.unlockedLevel || 1,
           completedLevels: Array.isArray(parsed.completedLevels) ? parsed.completedLevels : [],
           bestAttempts: parsed.bestAttempts || {},
@@ -57,6 +70,218 @@
     } catch (e) {
       console.error('Failed to save data:', e);
     }
+  }
+
+  // --- LEADERBOARD & PLAYER NAME ENGINE ---
+  function getLeaderboardData() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_LEADERBOARD);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Could not load leaderboard:', e);
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_LEADERBOARD));
+  }
+
+  function saveLeaderboardData(list) {
+    try {
+      localStorage.setItem(STORAGE_KEY_LEADERBOARD, JSON.stringify(list));
+    } catch (e) {
+      console.error('Failed to save leaderboard:', e);
+    }
+  }
+
+  function calculatePlayerScore() {
+    const completedCount = (gameStateData.completedLevels || []).length;
+    let totalAttempts = 0;
+    for (const lvlId in gameStateData.bestAttempts) {
+      totalAttempts += (gameStateData.bestAttempts[lvlId] || 1);
+    }
+    const levelScore = completedCount * 1000;
+    const efficiencyBonus = Math.max(0, (completedCount * 4 - totalAttempts) * 150);
+    return levelScore + efficiencyBonus;
+  }
+
+  function syncCurrentPlayerToLeaderboard() {
+    const name = (gameStateData.playerName || '').trim();
+    if (!name) return;
+    const score = calculatePlayerScore();
+    const levels = (gameStateData.completedLevels || []).length;
+    let totalAttempts = 0;
+    for (const lvlId in gameStateData.bestAttempts) {
+      totalAttempts += (gameStateData.bestAttempts[lvlId] || 1);
+    }
+
+    const list = getLeaderboardData();
+    const idx = list.findIndex(e => (e.name || '').trim().toLowerCase() === name.toLowerCase());
+    const entry = {
+      name: name,
+      score: score,
+      levels: levels,
+      bestAttempts: totalAttempts || (levels > 0 ? levels : 1)
+    };
+
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...entry };
+    } else {
+      list.push(entry);
+    }
+
+    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || (a.bestAttempts - b.bestAttempts));
+    saveLeaderboardData(list);
+  }
+
+  function checkPlayerNameExisted(name) {
+    if (!name || !name.trim()) return false;
+    const clean = name.trim().toLowerCase();
+    const list = getLeaderboardData();
+    return list.some(entry => (entry.name || '').trim().toLowerCase() === clean);
+  }
+
+  let pendingPlayerNameCallback = null;
+
+  function openPlayerNameModal(callback = null) {
+    pendingPlayerNameCallback = callback;
+    const modal = document.getElementById('modal-player-name');
+    const input = document.getElementById('input-player-name');
+    const errBox = document.getElementById('player-name-error');
+    if (modal && input) {
+      input.value = gameStateData.playerName || '';
+      if (errBox) errBox.classList.add('hidden');
+      input.classList.remove('has-error');
+      modal.classList.remove('hidden');
+      setTimeout(() => input.focus(), 60);
+    }
+  }
+
+  function closePlayerNameModal() {
+    const modal = document.getElementById('modal-player-name');
+    if (modal) modal.classList.add('hidden');
+    pendingPlayerNameCallback = null;
+  }
+
+  function handlePlayerNameSubmit() {
+    const input = document.getElementById('input-player-name');
+    const errBox = document.getElementById('player-name-error');
+    if (!input) return;
+    const val = input.value.trim();
+
+    if (!val) {
+      if (errBox) {
+        errBox.textContent = 'Please enter a player name';
+        errBox.classList.remove('hidden');
+      }
+      input.classList.add('has-error');
+      input.focus();
+      return;
+    }
+
+    // Name uniqueness validation: if name already entered, show "name is existed"
+    if (checkPlayerNameExisted(val)) {
+      if (errBox) {
+        errBox.textContent = 'name is existed';
+        errBox.classList.remove('hidden');
+      }
+      input.classList.add('has-error');
+      input.focus();
+      return;
+    }
+
+    // Valid unique name
+    gameStateData.playerName = val;
+    persistData();
+    syncCurrentPlayerToLeaderboard();
+    updatePlayerNameUI();
+    closePlayerNameModal();
+
+    if (typeof pendingPlayerNameCallback === 'function') {
+      const cb = pendingPlayerNameCallback;
+      pendingPlayerNameCallback = null;
+      cb();
+    }
+  }
+
+  function updatePlayerNameUI() {
+    const name = gameStateData.playerName ? gameStateData.playerName.toUpperCase() : 'GUEST';
+    const pilotDisplay = document.getElementById('menu-current-pilot-name');
+    if (pilotDisplay) pilotDisplay.textContent = name;
+    const lbTag = document.getElementById('lb-current-player-tag');
+    if (lbTag) lbTag.textContent = `CALLSIGN: ${name}`;
+  }
+
+  function escapeHTML(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderLeaderboard() {
+    syncCurrentPlayerToLeaderboard();
+    const list = getLeaderboardData();
+    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || (a.bestAttempts - b.bestAttempts));
+
+    const currentName = (gameStateData.playerName || '').trim().toLowerCase();
+    let currentRank = '-';
+    let currentScore = calculatePlayerScore();
+    let currentLevels = (gameStateData.completedLevels || []).length;
+
+    const container = document.getElementById('leaderboard-list-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    list.forEach((entry, idx) => {
+      const rankNum = idx + 1;
+      const isYou = currentName && (entry.name || '').trim().toLowerCase() === currentName;
+      if (isYou) {
+        currentRank = `#${rankNum}`;
+        currentScore = entry.score;
+        currentLevels = entry.levels;
+      }
+
+      const row = document.createElement('div');
+      row.className = `leaderboard-row${isYou ? ' current-player-row' : ''}`;
+
+      let rankClass = '';
+      let rankText = `#${String(rankNum).padStart(2, '0')}`;
+      if (rankNum === 1) {
+        rankClass = 'rank-1';
+        rankText = '🥇 01';
+      } else if (rankNum === 2) {
+        rankClass = 'rank-2';
+        rankText = '🥈 02';
+      } else if (rankNum === 3) {
+        rankClass = 'rank-3';
+        rankText = '🥉 03';
+      }
+
+      row.innerHTML = `
+        <span class="col-rank ${rankClass}">${rankText}</span>
+        <div class="col-player">
+          <span>${escapeHTML(entry.name)}</span>
+          ${isYou ? '<span class="badge-you">YOU</span>' : ''}
+        </div>
+        <span class="col-levels">${entry.levels || 0} / 20</span>
+        <span class="col-score">${(entry.score || 0).toLocaleString()} PTS</span>
+      `;
+
+      container.appendChild(row);
+    });
+
+    const rankEl = document.getElementById('lb-your-rank');
+    const scoreEl = document.getElementById('lb-your-score');
+    const clearedEl = document.getElementById('lb-your-cleared');
+    const tagEl = document.getElementById('lb-current-player-tag');
+
+    if (rankEl) rankEl.textContent = currentRank;
+    if (scoreEl) scoreEl.textContent = currentScore.toLocaleString();
+    if (clearedEl) clearedEl.textContent = `${currentLevels} / 20`;
+    if (tagEl) tagEl.textContent = `CALLSIGN: ${gameStateData.playerName ? gameStateData.playerName.toUpperCase() : 'GUEST'}`;
   }
 
   function getLevelAttempt(levelId) {
@@ -91,6 +316,7 @@
     // Reset attempt count for this level for future replays
     gameStateData.levelAttempts[levelId] = 1;
     persistData();
+    syncCurrentPlayerToLeaderboard();
     return { isNewBest, best: gameStateData.bestAttempts[levelId] };
   }
 
@@ -1087,7 +1313,7 @@
   // =========================================================================
   // 4. REAL-TIME CAMERA HAND GESTURE CONTROL ENGINE
   // =========================================================================
-  let PLAYER_SPEED = 3.0; // Calibrated responsive & smooth velocity (~1.20x increase from 2.5)
+  let PLAYER_SPEED = 3.75; // Calibrated responsive & smooth velocity (increased 25% from 3.0 to 3.75)
   const JUMP_FORCE = 9.0; // Responsive jump velocity to clear enhanced platform gaps
   const attackCooldown = 500; // 500ms cooldown (Section 8 & 12)
   let attackLocked = false;
@@ -1096,23 +1322,23 @@
   function updatePlayerSpeedFromSettings() {
     const spd = (gameStateData.settings && gameStateData.settings.playerSpeed) || 'normal';
     if (spd === 'slow') {
-      PLAYER_SPEED = 2.7;
+      PLAYER_SPEED = 3.38;
     } else if (spd === 'fast') {
-      PLAYER_SPEED = 3.8;
+      PLAYER_SPEED = 4.75;
     } else {
-      PLAYER_SPEED = 3.0; // 'normal' default for smooth, responsive control
+      PLAYER_SPEED = 3.75; // 'normal' default (+25% increase from 3.0)
     }
   }
 
   function setPlayerSpeed(speedOrPreset) {
     if (typeof speedOrPreset === 'number') {
-      PLAYER_SPEED = Math.max(1.0, Math.min(6.0, speedOrPreset));
+      PLAYER_SPEED = Math.max(1.0, Math.min(8.0, speedOrPreset));
     } else if (speedOrPreset === 'slow') {
-      PLAYER_SPEED = 2.7;
+      PLAYER_SPEED = 3.38;
     } else if (speedOrPreset === 'normal') {
-      PLAYER_SPEED = 3.0;
+      PLAYER_SPEED = 3.75;
     } else if (speedOrPreset === 'fast') {
-      PLAYER_SPEED = 3.8;
+      PLAYER_SPEED = 4.75;
     }
   }
 
@@ -2429,7 +2655,8 @@
       const screens = [
         'screen-main-menu', 'screen-camera-permission', 'screen-level-select',
         'screen-level-complete', 'screen-level-failed', 'modal-confirm-restart',
-        'modal-game-paused', 'screen-settings', 'screen-how-to-play'
+        'modal-game-paused', 'screen-settings', 'screen-how-to-play',
+        'screen-leaderboard'
       ];
       screens.forEach(id => {
         const el = document.getElementById(id);
@@ -2443,6 +2670,7 @@
           }
         }
       });
+      closePlayerNameModal();
 
       const hud = document.getElementById('game-hud');
       const camPanel = document.getElementById('camera-panel');
@@ -2557,6 +2785,7 @@
       const newBestBadge = document.getElementById('complete-new-best-badge');
       if (newBestBadge) newBestBadge.classList.toggle('hidden', !res.isNewBest);
 
+      syncCurrentPlayerToLeaderboard();
       setTimeout(() => {
         this.switchScreen('screen-level-complete');
         renderLevelSelectGrid();
@@ -3248,12 +3477,26 @@
     document.getElementById('btn-menu-enable-camera').addEventListener('click', async () => {
       sound.playClick();
       sound.ensureContext();
+      if (!gameStateData.playerName) {
+        openPlayerNameModal(() => {
+          game.switchScreen('screen-camera-permission');
+        });
+        return;
+      }
       game.switchScreen('screen-camera-permission');
     });
 
     document.getElementById('btn-menu-touch-play').addEventListener('click', () => {
       sound.playClick();
       sound.ensureContext();
+      if (!gameStateData.playerName) {
+        openPlayerNameModal(() => {
+          gameStateData.settings.controlMode = 'touch';
+          persistData();
+          game.startLevel(gameStateData.unlockedLevel || 1);
+        });
+        return;
+      }
       gameStateData.settings.controlMode = 'touch';
       persistData();
       game.startLevel(gameStateData.unlockedLevel || 1);
@@ -3265,6 +3508,17 @@
       game.switchScreen('screen-level-select');
     });
 
+    document.getElementById('btn-menu-leaderboard').addEventListener('click', () => {
+      sound.playClick();
+      renderLeaderboard();
+      game.switchScreen('screen-leaderboard');
+    });
+
+    document.getElementById('btn-menu-change-pilot').addEventListener('click', () => {
+      sound.playClick();
+      openPlayerNameModal();
+    });
+
     document.getElementById('btn-menu-how-to-play').addEventListener('click', () => {
       sound.playClick();
       game.switchScreen('screen-how-to-play');
@@ -3274,6 +3528,72 @@
       sound.playClick();
       game.switchScreen('screen-settings');
     });
+
+    // Leaderboard Screen Actions
+    document.getElementById('btn-leaderboard-change-name').addEventListener('click', () => {
+      sound.playClick();
+      openPlayerNameModal(() => {
+        renderLeaderboard();
+      });
+    });
+
+    document.getElementById('btn-leaderboard-back').addEventListener('click', () => {
+      sound.playClick();
+      game.switchScreen('screen-main-menu');
+    });
+
+    document.getElementById('btn-leaderboard-play').addEventListener('click', () => {
+      sound.playClick();
+      renderLevelSelectGrid(1);
+      game.switchScreen('screen-level-select');
+    });
+
+    // Player Name Prompt Form Listeners
+    const formPlayerName = document.getElementById('form-player-name');
+    if (formPlayerName) {
+      formPlayerName.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sound.playClick();
+        handlePlayerNameSubmit();
+      });
+    }
+
+    const btnSubmitPlayerName = document.getElementById('btn-submit-player-name');
+    if (btnSubmitPlayerName) {
+      btnSubmitPlayerName.addEventListener('click', (e) => {
+        e.preventDefault();
+        sound.playClick();
+        handlePlayerNameSubmit();
+      });
+    }
+
+    const btnCancelPlayerName = document.getElementById('btn-cancel-player-name');
+    if (btnCancelPlayerName) {
+      btnCancelPlayerName.addEventListener('click', () => {
+        sound.playClick();
+        closePlayerNameModal();
+      });
+    }
+
+    const inputPlayerName = document.getElementById('input-player-name');
+    const errPlayerName = document.getElementById('player-name-error');
+    if (inputPlayerName) {
+      inputPlayerName.addEventListener('input', () => {
+        const val = inputPlayerName.value.trim();
+        if (val && checkPlayerNameExisted(val)) {
+          if (errPlayerName) {
+            errPlayerName.textContent = 'name is existed';
+            errPlayerName.classList.remove('hidden');
+          }
+          inputPlayerName.classList.add('has-error');
+        } else {
+          if (errPlayerName) {
+            errPlayerName.classList.add('hidden');
+          }
+          inputPlayerName.classList.remove('has-error');
+        }
+      });
+    }
 
     // Camera Permission Flow
     document.getElementById('btn-request-cam-permit').addEventListener('click', async () => {
@@ -3407,6 +3727,18 @@
       game.switchScreen('screen-level-select');
     });
 
+    document.getElementById('btn-complete-leaderboard').addEventListener('click', () => {
+      sound.playClick();
+      renderLeaderboard();
+      game.switchScreen('screen-leaderboard');
+    });
+
+    document.getElementById('btn-pause-leaderboard').addEventListener('click', () => {
+      sound.playClick();
+      renderLeaderboard();
+      game.switchScreen('screen-leaderboard');
+    });
+
     // Level Failed Screen
     document.getElementById('btn-failed-retry').addEventListener('click', () => {
       sound.playClick();
@@ -3511,6 +3843,7 @@
         localStorage.removeItem(STORAGE_KEY);
         loadSavedData();
         updatePlayerSpeedFromSettings();
+        updatePlayerNameUI();
         if (setPlayerSpeedEl) setPlayerSpeedEl.value = gameStateData.settings.playerSpeed || 'normal';
         renderLevelSelectGrid();
         alert('All records reset.');
@@ -3565,6 +3898,7 @@
   window.addEventListener('DOMContentLoaded', () => {
     loadSavedData();
     updatePlayerSpeedFromSettings();
+    updatePlayerNameUI();
     const game = new GameEngine();
     currentGameInstance = game;
     bindUIEvents(game);
