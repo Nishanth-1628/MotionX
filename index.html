@@ -194,7 +194,7 @@
       <div class="menu-modal">
         <div class="brand-tag">PURE HTML5 + CSS3 + JAVASCRIPT</div>
         <h1 class="game-logo">Motion<span class="logo-accent">X</span></h1>
-        <div class="game-tagline">REAL-TIME CAMERA HAND-CONTROLLED ADVENTURE</div>
+        <div class="game-tagline">SHADOW FIGHTER • REAL-TIME MOTION COMBAT</div>
 
         <div class="hero-character-preview">
           <canvas id="avatar-preview-canvas" width="120" height="120"></canvas>
@@ -202,9 +202,9 @@
 
         <div class="menu-player-bar">
           <div class="pilot-badge-text">
-            <span class="pilot-icon">👤</span>
-            <span class="pilot-label">PILOT:</span>
-            <span class="pilot-name" id="menu-current-pilot-name">GUEST</span>
+            <span class="pilot-icon">🥷</span>
+            <span class="pilot-label">FIGHTER:</span>
+            <span class="pilot-name" id="menu-current-pilot-name">SHADOW</span>
           </div>
           <button id="btn-menu-change-pilot" class="btn-inline-pill" type="button">EDIT NAME</button>
         </div>
@@ -286,11 +286,11 @@
         <div class="card-top-row">
           <h2 class="modal-title">MISSION ARCHIVE (20 LEVELS)</h2>
           <div class="world-tab-group" id="world-tab-group">
-            <button class="world-btn active" data-world="1">W1: CITY</button>
-            <button class="world-btn" data-world="2">W2: FOREST</button>
-            <button class="world-btn" data-world="3">W3: FACTORY</button>
-            <button class="world-btn" data-world="4">W4: CYBER</button>
-            <button class="world-btn" data-world="5">W5: RUINS</button>
+            <button class="world-btn active" data-world="1">🏙️ CITY</button>
+            <button class="world-btn" data-world="2">🌲 NATURE</button>
+            <button class="world-btn" data-world="3">🪦 GRAVE</button>
+            <button class="world-btn" data-world="4">🌌 SPACE</button>
+            <button class="world-btn" data-world="5">🏛️ RUINS</button>
           </div>
         </div>
 
@@ -299,6 +299,7 @@
         </div>
 
         <div class="modal-btn-row">
+          <button id="btn-unlock-all-levels" class="cyber-btn cyber-btn-primary">⚡ UNLOCK ALL (20 LEVELS)</button>
           <button id="btn-level-select-back" class="cyber-btn cyber-btn-secondary">BACK TO MENU</button>
         </div>
       </div>
@@ -457,9 +458,9 @@
               <small>Calibrate horizontal running speed for hand control</small>
             </div>
             <select id="set-player-speed" class="cyber-input-select">
-              <option value="slow">SLOW & PRECISE (3.38)</option>
-              <option value="normal" selected>NORMAL (3.75) [Default]</option>
-              <option value="fast">FAST (4.75)</option>
+              <option value="slow">SLOW & PRECISE (5.75)</option>
+              <option value="normal" selected>NORMAL (6.60) [Default (+50% Boost)]</option>
+              <option value="fast">FAST (8.25)</option>
             </select>
           </div>
 
@@ -474,10 +475,18 @@
             </div>
           </div>
 
+          <div class="setting-row">
+            <div class="setting-meta">
+              <strong>UNLOCK ALL MISSIONS</strong>
+              <small>Instantly unlock all 20 levels across all 5 cyberpunk worlds</small>
+            </div>
+            <button id="btn-settings-unlock-all" class="cyber-btn cyber-btn-primary">🔓 UNLOCK ALL (20)</button>
+          </div>
+
           <div class="setting-row danger-row">
             <div class="setting-meta">
               <strong>RESET PROGRESS</strong>
-              <small>Clear unlocked levels and best attempt records</small>
+              <small>Clear completed history and best attempt records</small>
             </div>
             <button id="btn-reset-records" class="btn-danger-outline">RESET SAVE</button>
           </div>
