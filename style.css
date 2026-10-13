@@ -1283,6 +1283,34 @@ html, body {
   color: #000;
 }
 
+.world-btn.world-locked {
+  opacity: 0.6;
+  border-color: #1e2842;
+  filter: grayscale(0.5);
+}
+
+.level-select-progress {
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: var(--accent-amber);
+  margin-top: 4px;
+  letter-spacing: 0.5px;
+}
+
+.level-select-toast {
+  background: rgba(255, 51, 68, 0.18);
+  border: 1px solid var(--danger-red);
+  color: #ff6b7d;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  text-align: center;
+  box-shadow: 0 0 12px rgba(255, 51, 68, 0.25);
+  animation: fadeIn 0.2s ease;
+}
+
 .level-cards-scroll {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -1302,6 +1330,7 @@ html, body {
   gap: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
+  position: relative;
 }
 
 .level-item-card:hover {
@@ -1314,9 +1343,36 @@ html, body {
 }
 
 .level-item-card.locked {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
-  filter: grayscale(0.8);
+  filter: grayscale(0.7);
+  background: #0d121f;
+  border-color: #1c253d;
+}
+
+.level-item-card.locked:hover {
+  transform: none;
+  border-color: rgba(255, 51, 68, 0.5);
+  box-shadow: 0 0 10px rgba(255, 51, 68, 0.2);
+}
+
+.level-item-card.locked .item-num {
+  color: var(--text-muted);
+}
+
+.level-item-card.locked .item-name {
+  color: #7b88a8;
+}
+
+@keyframes cardShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+
+.level-item-card.shake {
+  animation: cardShake 0.35s ease;
+  border-color: var(--danger-red) !important;
 }
 
 .card-top-row {
@@ -1356,6 +1412,26 @@ html, body {
 .item-status {
   font-size: 9px;
   color: var(--text-muted);
+  font-weight: 600;
+}
+
+.item-status.status-locked {
+  color: var(--danger-red);
+}
+
+.item-status.status-completed {
+  color: var(--accent-green);
+}
+
+.item-status.status-ready {
+  color: var(--primary-cyan);
+}
+
+.item-lock-hint {
+  font-size: 8px;
+  color: #8892b0;
+  font-style: italic;
+  display: block;
 }
 
 .item-best {
@@ -1434,6 +1510,28 @@ html, body {
   font-size: 7px;
   color: var(--accent-amber);
   text-shadow: 0 0 8px var(--accent-amber);
+}
+
+.badge-level-unlocked {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: var(--primary-cyan);
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid var(--primary-cyan);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  margin: 8px auto 4px auto;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.4);
+  display: inline-block;
+  animation: pulse-glow 1.5s infinite;
+  text-align: center;
+}
+
+.setting-actions-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .mini-card {
