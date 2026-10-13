@@ -38,13 +38,14 @@
 
   let gameStateData = {
     playerName: '',
-    unlockedLevel: 20,
+    unlockedLevel: 1,
     lastPlayedLevel: 1,
     completedLevels: [],
     totalCoins: 0,
     levelCoins: {},         // { [levelId]: coinsCollectedCount }
     bestAttempts: {},       // preserved for backward compat
     levelAttempts: {},      // preserved for backward compat
+    allUnlockedByCheat: false,
     settings: { ...defaultSettings }
   };
 
@@ -53,19 +54,44 @@
       const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('pulse_strider_vanilla_save_v1');
       if (raw) {
         const parsed = JSON.parse(raw);
+        const completedLevels = Array.isArray(parsed.completedLevels)
+          ? parsed.completedLevels.filter(n => typeof n === 'number' && n >= 1 && n <= 20)
+          : [];
+        const maxCompleted = completedLevels.length > 0 ? Math.max(...completedLevels) : 0;
+
+        let unlockedLevel = 1;
+        if (parsed.allUnlockedByCheat === true) {
+          unlockedLevel = 20;
+        } else if (typeof parsed.unlockedLevel === 'number') {
+          // Progression guard: enforce unlocking level-by-level as completed
+          // Clamps to maxCompleted + 1, clearing any previous hardcoded 20
+          const target = Math.max(1, maxCompleted + 1);
+          unlockedLevel = Math.min(20, Math.min(parsed.unlockedLevel, target));
+        } else {
+          unlockedLevel = Math.max(1, Math.min(20, maxCompleted + 1));
+        }
+
+        let lastPlayedLevel = parsed.lastPlayedLevel || 1;
+        if (typeof lastPlayedLevel !== 'number' || lastPlayedLevel < 1 || lastPlayedLevel > unlockedLevel) {
+          lastPlayedLevel = Math.min(unlockedLevel, Math.max(1, lastPlayedLevel || 1));
+        }
+
         gameStateData = {
           playerName: parsed.playerName || 'SHADOW',
-          unlockedLevel: 20, // All 20 levels unlocked
-          lastPlayedLevel: parsed.lastPlayedLevel || parsed.unlockedLevel || 1,
-          completedLevels: Array.isArray(parsed.completedLevels) ? parsed.completedLevels : [],
+          unlockedLevel: unlockedLevel,
+          lastPlayedLevel: lastPlayedLevel,
+          completedLevels: completedLevels,
           totalCoins: parsed.totalCoins || 0,
           levelCoins: parsed.levelCoins || {},
           bestAttempts: parsed.bestAttempts || {},
           levelAttempts: parsed.levelAttempts || {},
+          allUnlockedByCheat: parsed.allUnlockedByCheat || false,
           settings: { ...defaultSettings, ...(parsed.settings || {}) }
         };
       } else {
-        gameStateData.unlockedLevel = 20;
+        gameStateData.unlockedLevel = 1;
+        gameStateData.lastPlayedLevel = 1;
+        gameStateData.completedLevels = [];
       }
       persistData();
     } catch (e) {
@@ -309,9 +335,12 @@
       gameStateData.bestAttempts[levelId] = attemptsUsed;
       isNewBest = true;
     }
-    // Unlock next level (all 20 remain unlocked)
-    gameStateData.unlockedLevel = 20;
-    gameStateData.lastPlayedLevel = Math.min(20, levelId + 1);
+    // Unlock next level (levels unlock one by one as they are completed)
+    const nextLevelId = levelId + 1;
+    if (nextLevelId <= 20 && nextLevelId > (gameStateData.unlockedLevel || 1)) {
+      gameStateData.unlockedLevel = nextLevelId;
+    }
+    gameStateData.lastPlayedLevel = Math.min(20, nextLevelId <= 20 ? nextLevelId : levelId);
     if (!gameStateData.completedLevels.includes(levelId)) {
       gameStateData.completedLevels.push(levelId);
     }
@@ -688,6 +717,24 @@
       gain.connect(this.ctx.destination);
       osc.start(t);
       osc.stop(t + 0.22);
+    }
+
+    playLocked() {
+      if (!gameStateData.settings.sfx) return;
+      this.ensureContext();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(140, t);
+      osc.frequency.setValueAtTime(105, t + 0.08);
+      gain.gain.setValueAtTime(0.22, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.23);
     }
   }
 
@@ -3284,6 +3331,12 @@
     }
 
     startLevel(levelId) {
+      const maxUnlocked = gameStateData.unlockedLevel || 1;
+      if (typeof levelId !== 'number' || levelId < 1) levelId = 1;
+      if (levelId > maxUnlocked) {
+        console.warn(`Level ${levelId} is locked. Highest unlocked is ${maxUnlocked}. Redirecting to level ${maxUnlocked}.`);
+        levelId = maxUnlocked;
+      }
       this.currentLevelId = levelId;
       this.currentLevel = getLevelCopy(levelId);
       gameStateData.lastPlayedLevel = levelId;
@@ -3549,6 +3602,16 @@
       if (!gameStateData.completedLevels.includes(this.currentLevelId)) {
         gameStateData.completedLevels.push(this.currentLevelId);
       }
+
+      // Progressive level unlock: unlock next level one by one as levels are completed
+      const nextLevelId = this.currentLevelId + 1;
+      let newlyUnlocked = false;
+      if (nextLevelId <= 20 && nextLevelId > (gameStateData.unlockedLevel || 1)) {
+        gameStateData.unlockedLevel = nextLevelId;
+        newlyUnlocked = true;
+      }
+      gameStateData.lastPlayedLevel = Math.min(20, nextLevelId <= 20 ? nextLevelId : this.currentLevelId);
+
       if (!gameStateData.levelCoins) gameStateData.levelCoins = {};
       const prevBestCoins = gameStateData.levelCoins[this.currentLevelId] || 0;
       if (this.coinsCollected > prevBestCoins) {
@@ -3580,6 +3643,30 @@
       const allCoinsBadge = document.getElementById('complete-all-coins-badge');
       if (allCoinsBadge) {
         allCoinsBadge.classList.toggle('hidden', this.coinsCollected < this.totalLevelCoins || this.totalLevelCoins === 0);
+      }
+
+      // Next level unlocked notification badge
+      const unlockBadge = document.getElementById('complete-unlock-badge');
+      if (unlockBadge) {
+        if (newlyUnlocked && nextLevelId <= 20) {
+          unlockBadge.textContent = `🔓 LEVEL ${String(nextLevelId).padStart(2, '0')} UNLOCKED!`;
+          unlockBadge.classList.remove('hidden');
+        } else if (this.currentLevelId === 20) {
+          unlockBadge.textContent = `🏆 MISSION COMPLETED: ALL 20 REALMS CONQUERED!`;
+          unlockBadge.classList.remove('hidden');
+        } else {
+          unlockBadge.classList.add('hidden');
+        }
+      }
+
+      // Update Next Level button text
+      const nextBtn = document.getElementById('btn-complete-next');
+      if (nextBtn) {
+        if (this.currentLevelId >= 20) {
+          nextBtn.textContent = '🏆 ALL MISSIONS CLEARED';
+        } else {
+          nextBtn.textContent = `NEXT LEVEL (${String(nextLevelId).padStart(2, '0')}) ❯`;
+        }
       }
 
       syncCurrentPlayerToLeaderboard();
@@ -6920,15 +7007,49 @@
 
   function nextLevel() {
     if (currentGameInstance) {
-      const nextId = Math.min(20, currentGameInstance.currentLevelId + 1);
-      currentGameInstance.startLevel(nextId);
+      const nextId = currentGameInstance.currentLevelId + 1;
+      if (nextId <= 20) {
+        currentGameInstance.startLevel(nextId);
+      } else {
+        currentGameInstance.switchScreen('screen-level-select');
+        renderLevelSelectGrid(5);
+      }
     }
   }
 
   function unlockAllLevels() {
     gameStateData.unlockedLevel = 20;
+    gameStateData.allUnlockedByCheat = true;
     persistData();
-    renderLevelSelectGrid();
+    const activeWorld = document.querySelector('.world-btn.active');
+    const worldNum = activeWorld ? parseInt(activeWorld.dataset.world, 10) : null;
+    renderLevelSelectGrid(worldNum);
+  }
+
+  function relockLevels() {
+    delete gameStateData.allUnlockedByCheat;
+    const completedList = gameStateData.completedLevels && gameStateData.completedLevels.length > 0
+      ? gameStateData.completedLevels
+      : [];
+    const maxCompleted = completedList.length > 0 ? Math.max(...completedList) : 0;
+    gameStateData.unlockedLevel = Math.max(1, Math.min(20, maxCompleted + 1));
+    gameStateData.lastPlayedLevel = Math.min(gameStateData.lastPlayedLevel || 1, gameStateData.unlockedLevel);
+    persistData();
+    const activeWorld = document.querySelector('.world-btn.active');
+    const worldNum = activeWorld ? parseInt(activeWorld.dataset.world, 10) : 1;
+    renderLevelSelectGrid(worldNum);
+  }
+
+  let noticeTimeout = null;
+  function showLevelSelectNotice(msg) {
+    const el = document.getElementById('level-select-notice');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    if (noticeTimeout) clearTimeout(noticeTimeout);
+    noticeTimeout = setTimeout(() => {
+      el.classList.add('hidden');
+    }, 2800);
   }
 
   // Expose all 22 required functions on window.PulseStrider and window (Section 22)
@@ -6956,6 +7077,7 @@
     restartLevel,
     nextLevel,
     unlockAllLevels,
+    relockLevels,
     movePlayer,
     saveBestAttempt,
     updatePlayerSpeedFromSettings,
@@ -6988,28 +7110,69 @@
     if (!scrollContainer) return;
     scrollContainer.innerHTML = '';
 
+    const unlockedMax = gameStateData.unlockedLevel || 1;
+    const completedCount = (gameStateData.completedLevels || []).length;
+
+    // Update campaign progress in header
+    const progressTextEl = document.getElementById('level-select-progress');
+    if (progressTextEl) {
+      progressTextEl.textContent = `CAMPAIGN: ${completedCount}/20 CLEARED • UNLOCKED UP TO: LEVEL ${String(unlockedMax).padStart(2, '0')}`;
+    }
+
+    // Update world tabs indicators
+    document.querySelectorAll('.world-btn').forEach(btn => {
+      const w = parseInt(btn.dataset.world, 10);
+      const worldFirstLevel = (w - 1) * 4 + 1;
+      const isWorldUnlocked = unlockedMax >= worldFirstLevel;
+      btn.classList.toggle('world-locked', !isWorldUnlocked);
+    });
+
     LEVELS.forEach(lvl => {
       if (filterWorld && lvl.world !== filterWorld) return;
 
-      const isUnlocked = true; // All 20 levels unlocked!
+      const isUnlocked = lvl.id <= unlockedMax;
       const isCompleted = gameStateData.completedLevels.includes(lvl.id);
       const lvlCoins = gameStateData.levelCoins ? gameStateData.levelCoins[lvl.id] : undefined;
 
       const card = document.createElement('div');
-      card.className = `level-item-card ${isCompleted ? 'completed' : ''}`;
+      card.className = `level-item-card ${isCompleted ? 'completed' : ''} ${!isUnlocked ? 'locked' : ''}`;
+      if (!isUnlocked) {
+        card.setAttribute('aria-disabled', 'true');
+        card.setAttribute('title', `Complete Level ${lvl.id - 1} to unlock!`);
+      }
 
       const theme = getLevelTheme(lvl.id);
+
+      let statusHtml = '';
+      if (!isUnlocked) {
+        statusHtml = '<span class="item-status status-locked">🔒 LOCKED</span>';
+      } else if (isCompleted) {
+        statusHtml = '<span class="item-status status-completed">✓ COMPLETE</span>';
+      } else {
+        statusHtml = '<span class="item-status status-ready">▶ READY</span>';
+      }
+
       card.innerHTML = `
         <div class="card-top-row">
           <span class="item-num">LEVEL ${String(lvl.id).padStart(2, '0')}</span>
           <span class="theme-pill">${theme.icon} ${theme.themeTitle}</span>
         </div>
         <strong class="item-name">${lvl.name}</strong>
-        <span class="item-status">${isCompleted ? '✓ COMPLETE' : 'READY'}</span>
-        ${lvlCoins !== undefined ? `<span class="item-best">🪙 Coins: ${lvlCoins}</span>` : ''}
+        ${statusHtml}
+        ${isUnlocked && lvlCoins !== undefined ? `<span class="item-best">🪙 Coins: ${lvlCoins}</span>` : ''}
+        ${!isUnlocked ? `<span class="item-lock-hint">Clear Level ${lvl.id - 1}</span>` : ''}
       `;
 
       card.addEventListener('click', () => {
+        if (!isUnlocked) {
+          sound.playLocked();
+          card.classList.remove('shake');
+          void card.offsetWidth; // force reflow for animation restart
+          card.classList.add('shake');
+          showLevelSelectNotice(`🔒 Level ${lvl.id} is locked! Complete Level ${lvl.id - 1} first.`);
+          return;
+        }
+
         sound.playClick();
         gameStateData.lastPlayedLevel = lvl.id;
         persistData();
@@ -7055,7 +7218,12 @@
 
     document.getElementById('btn-menu-level-select').addEventListener('click', () => {
       sound.playClick();
-      renderLevelSelectGrid(1);
+      const currentLevel = gameStateData.lastPlayedLevel || 1;
+      const targetWorld = Math.ceil(currentLevel / 4);
+      document.querySelectorAll('.world-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === targetWorld);
+      });
+      renderLevelSelectGrid(targetWorld);
       game.switchScreen('screen-level-select');
     });
 
@@ -7289,7 +7457,11 @@
 
     document.getElementById('btn-pause-level-select').addEventListener('click', () => {
       sound.playClick();
-      renderLevelSelectGrid(1);
+      const currentWorld = Math.ceil(((game.currentLevelId) || 1) / 4);
+      document.querySelectorAll('.world-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === currentWorld);
+      });
+      renderLevelSelectGrid(currentWorld);
       game.switchScreen('screen-level-select');
     });
 
@@ -7312,7 +7484,12 @@
 
     document.getElementById('btn-complete-level-select').addEventListener('click', () => {
       sound.playClick();
-      renderLevelSelectGrid(1);
+      const nextLvl = Math.min(20, ((game.currentLevelId) || 1) + 1);
+      const targetWorld = Math.ceil(nextLvl / 4);
+      document.querySelectorAll('.world-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === targetWorld);
+      });
+      renderLevelSelectGrid(targetWorld);
       game.switchScreen('screen-level-select');
     });
 
@@ -7336,7 +7513,11 @@
 
     document.getElementById('btn-failed-level-select').addEventListener('click', () => {
       sound.playClick();
-      renderLevelSelectGrid(1);
+      const currentWorld = Math.ceil(((game.currentLevelId) || 1) / 4);
+      document.querySelectorAll('.world-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === currentWorld);
+      });
+      renderLevelSelectGrid(currentWorld);
       game.switchScreen('screen-level-select');
     });
 
@@ -7354,6 +7535,15 @@
       sound.playClick();
       game.switchScreen('screen-main-menu');
     });
+
+    const btnRelockLevels = document.getElementById('btn-relock-levels');
+    if (btnRelockLevels) {
+      btnRelockLevels.addEventListener('click', () => {
+        sound.playClick();
+        relockLevels();
+        showLevelSelectNotice(`🔒 Relocked to completed levels (Level 1–${gameStateData.unlockedLevel})`);
+      });
+    }
 
     const btnUnlockAll = document.getElementById('btn-unlock-all-levels');
     if (btnUnlockAll) {
@@ -7447,15 +7637,24 @@
       });
     }
 
+    const btnSettingsRelock = document.getElementById('btn-settings-relock');
+    if (btnSettingsRelock) {
+      btnSettingsRelock.addEventListener('click', () => {
+        sound.playClick();
+        relockLevels();
+        alert(`Levels relocked! Currently unlocked up to Level ${gameStateData.unlockedLevel}.`);
+      });
+    }
+
     document.getElementById('btn-reset-records').addEventListener('click', () => {
-      if (confirm('Reset attempts history and best records? (All 20 levels will remain unlocked)')) {
+      if (confirm('Reset campaign progress? This will lock levels 2-20 and reset your coin records.')) {
         localStorage.removeItem(STORAGE_KEY);
         loadSavedData();
         updatePlayerSpeedFromSettings();
         updatePlayerNameUI();
         if (setPlayerSpeedEl) setPlayerSpeedEl.value = gameStateData.settings.playerSpeed || 'normal';
-        renderLevelSelectGrid();
-        alert('Records reset. All 20 levels remain unlocked.');
+        renderLevelSelectGrid(1);
+        alert('Progress reset! Level 1 is ready, and levels 2-20 are locked.');
       }
     });
 
