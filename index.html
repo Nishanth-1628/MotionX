@@ -26,11 +26,20 @@
 
       <!-- IN-GAME HUD -->
       <header id="game-hud" class="game-hud hidden">
-        <!-- Top-Left: Attempt System (Strictly NO Health / NO Lives) -->
-        <div class="hud-card hud-attempts-card">
+        <!-- Top-Left: 3 Lives & Coins System (Strictly NO Attempts) -->
+        <div class="hud-card hud-attempts-card" id="hud-stats-card">
           <div class="hud-level-text" id="hud-level-display">LEVEL 01</div>
-          <div class="hud-attempt-text" id="hud-attempt-display">CURRENT ATTEMPT: 01</div>
-          <div class="hud-best-text" id="hud-best-display">BEST ATTEMPT: --</div>
+          <div class="hud-lives-row" id="hud-lives-display">
+            <span class="hud-stat-tag">LIVES:</span>
+            <span class="hud-hearts" id="hud-hearts-display">❤️❤️❤️</span>
+          </div>
+          <div class="hud-coins-row" id="hud-coins-display">
+            <span class="hud-stat-tag">COINS:</span>
+            <span class="hud-coin-val" id="hud-coins-display-val">🪙 00 / 12</span>
+          </div>
+          <!-- Backward compatibility elements -->
+          <span id="hud-attempt-display" class="hidden"></span>
+          <span id="hud-best-display" class="hidden"></span>
         </div>
 
         <!-- Top-Center: Dual-Hand On-Screen Gesture Indicator -->
@@ -64,7 +73,7 @@
         <!-- Top-Right: Action Buttons -->
         <div class="hud-actions">
           <button id="btn-toggle-camera" class="hud-btn" title="Toggle Camera Preview" aria-label="Toggle Camera">📷 CAM</button>
-          <button id="btn-restart-attempt" class="hud-btn" title="Restart Attempt" aria-label="Restart Attempt">🔄 RETRY</button>
+          <button id="btn-restart-attempt" class="hud-btn" title="Restart Level" aria-label="Restart Level">🔄 RETRY</button>
           <button id="btn-pause-game" class="hud-btn" title="Pause Game" aria-label="Pause Game">⏸ PAUSE</button>
         </div>
       </header>
@@ -179,6 +188,14 @@
         </div>
       </div>
 
+      <!-- KEYBOARD MULTI-KEY HINT BAR (Visible during desktop gameplay) -->
+      <div id="keyboard-controls-hint" class="keyboard-controls-hint hidden">
+        <span class="kb-hint-pill"><kbd>A</kbd> / <kbd>D</kbd> or <kbd>◀</kbd> <kbd>▶</kbd> Run</span>
+        <span class="kb-hint-pill"><kbd>W</kbd> or <kbd>▲</kbd> Jump</span>
+        <span class="kb-hint-pill"><kbd>SPACE</kbd> Attack</span>
+        <span class="kb-hint-pill kb-combo-pill">⚡ Multi-Key Active (Hold Run + Jump + Slash)</span>
+      </div>
+
       <!-- ATTACK FLASH FEEDBACK BANNER -->
       <div id="attack-banner-fx" class="attack-banner-fx">⚔️ ATTACK!</div>
     </main>
@@ -237,7 +254,7 @@
         </div>
 
         <footer class="menu-legal">
-          <span>NO LIVES / HEALTH • ATTEMPT SYSTEM • REAL-TIME AI HAND TRACKING</span>
+          <span>3 LIVES PER LEVEL • COLLECT COINS • REAL-TIME AI HAND TRACKING</span>
         </footer>
       </div>
     </div>
@@ -314,15 +331,20 @@
 
         <div class="complete-stats-row">
           <div class="stat-pill">
-            <span class="stat-title">ATTEMPTS USED</span>
-            <span class="stat-number" id="complete-attempts-val">1</span>
+            <span class="stat-title">LIVES LEFT</span>
+            <span class="stat-number" id="complete-lives-val">❤️❤️❤️</span>
           </div>
           <div class="stat-pill highlight-pill">
-            <span class="stat-title">BEST ATTEMPTS</span>
-            <span class="stat-number" id="complete-best-val">1</span>
-            <div id="complete-new-best-badge" class="badge-new-record hidden">🏆 NEW BEST!</div>
+            <span class="stat-title">COINS COLLECTED</span>
+            <span class="stat-number" id="complete-coins-val">🪙 12 / 12</span>
+            <div id="complete-all-coins-badge" class="badge-new-record hidden">⭐ ALL COINS!</div>
           </div>
         </div>
+
+        <!-- Backward-compatibility elements -->
+        <span id="complete-attempts-val" class="hidden"></span>
+        <span id="complete-best-val" class="hidden"></span>
+        <span id="complete-new-best-badge" class="hidden"></span>
 
         <div class="modal-btn-stack">
           <button id="btn-complete-next" class="cyber-btn cyber-btn-primary">NEXT LEVEL</button>
@@ -338,15 +360,16 @@
       <div class="modal-card defeat-modal">
         <div class="defeat-anim-icon">⚡</div>
         <h2 class="defeat-header">LEVEL FAILED</h2>
-        <div class="defeat-attempt-tag" id="defeat-attempt-display">Attempt 01 Failed</div>
+        <div class="defeat-attempt-tag" id="defeat-attempt-display">OUT OF LIVES</div>
 
         <div class="defeat-stats-pill">
-          <span class="stat-title">ATTEMPTS USED</span>
-          <span class="stat-number danger-text" id="defeat-total-attempts">1</span>
+          <span class="stat-title">LIVES REMAINING</span>
+          <span class="stat-number danger-text" id="defeat-lives-display">🖤🖤🖤 (0/3)</span>
+          <span id="defeat-total-attempts" class="hidden">0</span>
         </div>
 
         <div class="modal-btn-stack">
-          <button id="btn-failed-retry" class="cyber-btn cyber-btn-primary">RETRY (NEXT ATTEMPT)</button>
+          <button id="btn-failed-retry" class="cyber-btn cyber-btn-primary">RETRY (3 LIVES)</button>
           <button id="btn-failed-level-select" class="cyber-btn cyber-btn-secondary">LEVEL SELECT</button>
         </div>
       </div>
@@ -356,7 +379,7 @@
     <div id="modal-confirm-restart" class="screen-overlay hidden modal-backdrop">
       <div class="modal-card mini-card">
         <h3 class="mini-modal-title">RESTART LEVEL?</h3>
-        <p class="mini-modal-desc">Your current attempt will be restarted and count towards your attempts.</p>
+        <p class="mini-modal-desc">Level will restart from the beginning with 3 lives restored.</p>
         <div class="modal-btn-row">
           <button id="btn-restart-yes" class="cyber-btn cyber-btn-primary">YES, RESTART</button>
           <button id="btn-restart-cancel" class="cyber-btn cyber-btn-secondary">CANCEL</button>
@@ -370,7 +393,7 @@
         <h3 class="mini-modal-title">GAME PAUSED</h3>
         <div class="modal-btn-stack">
           <button id="btn-pause-resume" class="cyber-btn cyber-btn-primary">RESUME</button>
-          <button id="btn-pause-restart" class="cyber-btn cyber-btn-secondary">RESTART ATTEMPT</button>
+          <button id="btn-pause-restart" class="cyber-btn cyber-btn-secondary">RESTART LEVEL</button>
           <button id="btn-pause-leaderboard" class="cyber-btn cyber-btn-secondary">🏆 LEADERBOARD</button>
           <button id="btn-pause-settings" class="cyber-btn cyber-btn-secondary">SETTINGS</button>
           <button id="btn-pause-level-select" class="cyber-btn cyber-btn-secondary">LEVEL SELECT</button>
@@ -486,7 +509,7 @@
           <div class="setting-row danger-row">
             <div class="setting-meta">
               <strong>RESET PROGRESS</strong>
-              <small>Clear completed history and best attempt records</small>
+              <small>Clear completed history, coins and personal records</small>
             </div>
             <button id="btn-reset-records" class="btn-danger-outline">RESET SAVE</button>
           </div>
@@ -510,16 +533,16 @@
           </div>
 
           <div class="guide-card">
-            <h3>ATTEMPT SYSTEM (NO HP / NO LIVES)</h3>
-            <p>You have <strong>NO health bar and NO hearts</strong>! One contact with an obstacle or enemy fails the level. Each level tracks its own attempts. Beat levels with as few attempts as possible!</p>
+            <h3>3 LIVES & COIN COLLECTION</h3>
+            <p>You start each level with <strong>3 Lives (❤️❤️❤️)</strong>! If you take damage or fall, you lose 1 life and respawn while keeping the coins you've collected. Collect all floating cyber-coins to achieve maximum score!</p>
           </div>
 
           <div class="guide-card">
-            <h3>MOTIONX: TWO-HAND CAMERA CONTROLS</h3>
+            <h3>MOTIONX: CAMERA & DUAL-HAND MULTI-CONTROLS</h3>
             <ul>
-              <li><strong>RIGHT HAND ➜ MOVEMENT:</strong> Point your index finger to move (👈 Left, 👉 Right, ☝️ Up/Jump, 👇 Down). Hold finger continuously to keep moving! Open hand ✋ stops.</li>
-              <li><strong>LEFT HAND ➜ ATTACK:</strong> Make a closed fist ✊ to trigger attack! 500ms cooldown.</li>
-              <li><strong>SIMULTANEOUS ACTION:</strong> Run with your right hand while punching with your left hand!</li>
+              <li><strong>RIGHT HAND ➜ MOVEMENT & JUMP:</strong> Point index finger (👈 Left, 👉 Right, ☝️ Jump, 👇 Down). Point diagonally ↗️ / ↖️ to <strong>Run and Jump simultaneously</strong>!</li>
+              <li><strong>LEFT HAND ➜ ATTACK & SECONDARY JUMP:</strong> Make a closed fist ✊ to Attack! Point index ☝️ to Jump!</li>
+              <li><strong>SIMULTANEOUS MULTI-ACTION:</strong> Run with right hand while punching or jumping with left hand, or hold keyboard keys (<kbd>A</kbd>/<kbd>D</kbd> + <kbd>W</kbd> + <kbd>SPACE</kbd>) simultaneously!</li>
             </ul>
           </div>
 
