@@ -157,6 +157,47 @@ html, body {
   font-weight: 600;
 }
 
+/* 3 Lives & Coins HUD Displays */
+.hud-lives-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+}
+
+.hud-hearts {
+  font-size: 13px;
+  letter-spacing: 2px;
+  line-height: 1;
+  filter: drop-shadow(0 0 5px rgba(255, 30, 80, 0.7));
+}
+
+.hud-coins-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-tech);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--accent-amber);
+  text-shadow: 0 0 8px rgba(255, 180, 0, 0.5);
+  margin-top: 1px;
+}
+
+.hud-stat-tag {
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  color: #7b94bf;
+  letter-spacing: 0.5px;
+}
+
+.hud-coin-val {
+  font-family: var(--font-tech);
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffd700;
+}
+
 /* Top-Center Dual-Hand On-Screen Gesture Indicator */
 .hud-gesture-card {
   align-items: center;
@@ -838,6 +879,67 @@ html, body {
   border-color: var(--accent-magenta);
   background: rgba(255, 0, 127, 0.15);
   color: var(--accent-magenta);
+}
+
+/* ========================================================
+   KEYBOARD MULTI-KEY HINT BAR
+   ======================================================== */
+.keyboard-controls-hint {
+  position: absolute;
+  bottom: calc(var(--safe-bottom) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(8, 12, 28, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 10px rgba(0, 240, 255, 0.1);
+  z-index: 15;
+  pointer-events: none;
+  font-family: var(--font-tech);
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.keyboard-controls-hint.hidden {
+  display: none !important;
+}
+
+.keyboard-controls-hint kbd {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-weight: 700;
+  color: #fff;
+  font-size: 10px;
+  font-family: var(--font-tech);
+}
+
+.kb-hint-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kb-combo-pill {
+  color: var(--primary-cyan);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-left: 1px solid rgba(0, 240, 255, 0.3);
+  padding-left: 10px;
+}
+
+@media (max-width: 768px) {
+  .keyboard-controls-hint {
+    display: none !important;
+  }
 }
 
 /* ========================================================
