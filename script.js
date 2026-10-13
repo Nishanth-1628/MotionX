@@ -3208,8 +3208,6 @@
       this.player = {
         x: this.currentLevel.spawn.x,
         y: this.currentLevel.spawn.y,
-        lastSafeX: this.currentLevel.spawn.x,
-        lastSafeY: this.currentLevel.spawn.y,
         vx: 0,
         vy: 0,
         width: 28,
@@ -3369,154 +3367,6 @@
       }
     }
 
-    isPositionHazardous(x, y) {
-      if (!this.currentLevel || !this.currentLevel.hazards || this.currentLevel.hazards.length === 0) return false;
-      const testP = { x, y, width: 32, height: 40 };
-      for (const haz of this.currentLevel.hazards) {
-        if (this.checkAABB(testP, haz)) return true;
-        const hazW = haz.width || 28;
-        const hazCenterX = haz.x + hazW / 2;
-        if (Math.abs(x - hazCenterX) <= hazW / 2 + 16 && Math.abs(y - haz.y) < 36) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    findPlatformAt(x, y) {
-      if (!this.currentLevel || !this.currentLevel.platforms) return null;
-      let bestPlat = null;
-      let minDy = Infinity;
-      for (const plat of this.currentLevel.platforms) {
-        if (x >= plat.x - 10 && x <= plat.x + plat.width + 10) {
-          const dy = Math.abs(plat.y - y);
-          if (dy < minDy) {
-            minDy = dy;
-            bestPlat = plat;
-          }
-        }
-      }
-      return bestPlat;
-    }
-
-    findClosestPlatform(x) {
-      if (!this.currentLevel || !this.currentLevel.platforms || this.currentLevel.platforms.length === 0) return null;
-      let bestPlat = null;
-      let minDx = Infinity;
-      for (const plat of this.currentLevel.platforms) {
-        let dx = 0;
-        if (x < plat.x) dx = plat.x - x;
-        else if (x > plat.x + plat.width) dx = x - (plat.x + plat.width);
-        else dx = 0;
-
-        if (dx < minDx) {
-          minDx = dx;
-          bestPlat = plat;
-        }
-      }
-      return bestPlat;
-    }
-
-    findRespawnPoint(deathX, deathY, reason = 'hazard') {
-      const halfH = this.player ? this.player.height / 2 : 19;
-      const halfW = this.player ? this.player.width / 2 : 14;
-
-      // 1. Pit Deaths (player fell into abyss/chasm):
-      // Respawn at the safe platform edge where the player stepped or jumped from.
-      if (reason === 'pit') {
-        const plat = this.findClosestPlatform(deathX);
-        if (this.player && typeof this.player.lastSafeX === 'number' && typeof this.player.lastSafeY === 'number') {
-          const distSafeToDeath = Math.abs(this.player.lastSafeX - deathX);
-          if (distSafeToDeath <= 400 && !this.isPositionHazardous(this.player.lastSafeX, this.player.lastSafeY)) {
-            const safePlat = this.findPlatformAt(this.player.lastSafeX, this.player.lastSafeY) || plat;
-            if (safePlat) {
-              return { x: this.player.lastSafeX, y: safePlat.y - halfH };
-            }
-          }
-        }
-        if (plat) {
-          const clampedX = Math.max(plat.x + halfW + 6, Math.min(plat.x + plat.width - halfW - 6, deathX));
-          return { x: clampedX, y: plat.y - halfH };
-        }
-        return { x: this.currentLevel.spawn.x, y: this.currentLevel.spawn.y };
-      }
-
-      // 2. Enemy Deaths:
-      // Player died fighting/touching an enemy at (deathX, deathY).
-      // Respawn right at the platform surface where death occurred.
-      if (reason === 'enemy') {
-        const plat = this.findPlatformAt(deathX, deathY) || this.findClosestPlatform(deathX);
-        let respawnX = deathX;
-        let respawnY = deathY;
-        if (plat) {
-          respawnX = Math.max(plat.x + halfW + 4, Math.min(plat.x + plat.width - halfW - 4, deathX));
-          respawnY = plat.y - halfH;
-        }
-
-        // Push away nearby enemies so the player doesn't instantly take damage on respawn
-        if (this.currentLevel && this.currentLevel.enemies) {
-          for (const enemy of this.currentLevel.enemies) {
-            if (!enemy.isAlive) continue;
-            const dist = Math.hypot(enemy.x - respawnX, enemy.y - respawnY);
-            if (dist < 110) {
-              const pushDir = enemy.x >= respawnX ? 1 : -1;
-              enemy.x = respawnX + pushDir * 80;
-              if ((pushDir > 0 && enemy.vx < 0) || (pushDir < 0 && enemy.vx > 0)) {
-                enemy.vx = -enemy.vx;
-              }
-            }
-          }
-        }
-        return { x: respawnX, y: respawnY };
-      }
-
-      // 3. Hazard Deaths (Spikes / Lasers):
-      // Player died from a hazard at (deathX, deathY).
-      const plat = this.findPlatformAt(deathX, deathY) || this.findClosestPlatform(deathX);
-      if (plat) {
-        const targetY = plat.y - halfH;
-        const clampedX = Math.max(plat.x + halfW + 4, Math.min(plat.x + plat.width - halfW - 4, deathX));
-
-        if (!this.isPositionHazardous(clampedX, targetY)) {
-          return { x: clampedX, y: targetY };
-        }
-
-        // Death spot is directly on spikes/hazard: search immediate vicinity on same platform
-        const searchOffsets = [-35, 35, -65, 65, -95, 95, -125, 125];
-        for (const off of searchOffsets) {
-          const candX = Math.max(plat.x + halfW + 4, Math.min(plat.x + plat.width - halfW - 4, clampedX + off));
-          if (!this.isPositionHazardous(candX, targetY)) {
-            return { x: candX, y: targetY };
-          }
-        }
-      }
-
-      // If whole platform is hazard, use last safe grounded coordinates
-      if (this.player && typeof this.player.lastSafeX === 'number' && typeof this.player.lastSafeY === 'number') {
-        if (!this.isPositionHazardous(this.player.lastSafeX, this.player.lastSafeY)) {
-          return { x: this.player.lastSafeX, y: this.player.lastSafeY };
-        }
-      }
-
-      return { x: this.currentLevel.spawn.x, y: this.currentLevel.spawn.y };
-    }
-
-    addRespawnPulse(x, y) {
-      for (let i = 0; i < 26; i++) {
-        const angle = (i / 26) * Math.PI * 2;
-        const spd = Math.random() * 3.5 + 2.0;
-        this.particles.push({
-          x, y,
-          vx: Math.cos(angle) * spd,
-          vy: Math.sin(angle) * spd,
-          color: Math.random() > 0.4 ? '#00f0ff' : '#ffffff',
-          size: Math.random() * 3 + 2,
-          life: 0.42,
-          maxLife: 0.42
-        });
-      }
-    }
-
     takeDamage(reason = 'hazard') {
       if (this.state !== 'PLAYING') return;
       if (!this.player || !this.player.isAlive) return;
@@ -3529,26 +3379,18 @@
         this.screenShake = 14;
         this.damageFlashTimer = 0.35;
         this.addExplosion(this.player.x, this.player.y, '#ff3344', 30);
+        this.addFloatingPopup(this.player.x, this.player.y - 25, '-1 LIFE', '#ff3344');
 
-        const deathX = this.player.x;
-        const deathY = this.player.y;
-        const respawnPos = this.findRespawnPoint(deathX, deathY, reason);
-
-        // Respawn player right where they died (preserving coins and progress!)
-        this.player.x = respawnPos.x;
-        this.player.y = respawnPos.y;
+        // Respawn player back at spawn, keeping collected coins intact!
+        this.player.x = this.currentLevel.spawn.x;
+        this.player.y = this.currentLevel.spawn.y;
         this.player.vx = 0;
         this.player.vy = 0;
         this.player.isGrounded = false;
-        this.player.invulnerableTimer = 2.5; // 2.5s invulnerability shield
+        this.player.invulnerableTimer = 2.0;
         this.player.state = 'idle';
-        this.player.attackTimer = 0;
 
-        // Visual and audio feedback for respawn right at death location
-        this.addRespawnPulse(respawnPos.x, respawnPos.y);
-        this.addFloatingPopup(respawnPos.x, respawnPos.y - 25, '-1 LIFE • RESPAWNED', '#00f0ff');
-
-        // Camera recenter immediately on respawn position
+        // Camera recenter towards spawn
         const leadOffset = this.canvas.width * 0.40;
         const maxCamX = Math.max(0, this.currentLevel.width - this.canvas.width);
         this.cameraX = Math.max(0, Math.min(maxCamX, this.player.x - leadOffset));
@@ -3956,10 +3798,6 @@
             p.vy = 0;
           }
         }
-      }
-      if (p.isGrounded && !this.isPositionHazardous(p.x, p.y)) {
-        p.lastSafeX = p.x;
-        p.lastSafeY = p.y;
       }
     }
 
