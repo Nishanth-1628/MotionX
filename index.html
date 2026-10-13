@@ -305,7 +305,10 @@
     <div id="screen-level-select" class="screen-overlay hidden">
       <div class="modal-card wide-card">
         <div class="card-top-row">
-          <h2 class="modal-title">MISSION ARCHIVE (20 LEVELS)</h2>
+          <div>
+            <h2 class="modal-title">MISSION ARCHIVE (20 LEVELS)</h2>
+            <div id="level-select-progress" class="level-select-progress">PROGRESS: 0/20 CLEARED • UNLOCKED: LEVEL 01</div>
+          </div>
           <div class="world-tab-group" id="world-tab-group">
             <button class="world-btn active" data-world="1">🏙️ CITY</button>
             <button class="world-btn" data-world="2">🌲 NATURE</button>
@@ -315,13 +318,16 @@
           </div>
         </div>
 
+        <div id="level-select-notice" class="level-select-toast hidden"></div>
+
         <div class="level-cards-scroll" id="level-cards-scroll">
           <!-- 20 Level Cards Injected Dynamically -->
         </div>
 
         <div class="modal-btn-row">
-          <button id="btn-unlock-all-levels" class="cyber-btn cyber-btn-primary">⚡ UNLOCK ALL (20 LEVELS)</button>
-          <button id="btn-level-select-back" class="cyber-btn cyber-btn-secondary">BACK TO MENU</button>
+          <button id="btn-level-select-back" class="cyber-btn cyber-btn-primary">BACK TO MENU</button>
+          <button id="btn-relock-levels" class="cyber-btn cyber-btn-secondary" title="Relock levels to match actual completed missions">🔒 RELOCK MISSIONS</button>
+          <button id="btn-unlock-all-levels" class="cyber-btn cyber-btn-ghost hidden">⚡ UNLOCK ALL (DEV)</button>
         </div>
       </div>
     </div>
@@ -332,6 +338,7 @@
         <div class="victory-anim-icon">🎉</div>
         <h2 class="victory-header">LEVEL COMPLETE!</h2>
         <div class="victory-subtitle" id="complete-level-name">LEVEL 01</div>
+        <div id="complete-unlock-badge" class="badge-level-unlocked hidden">🔓 LEVEL 02 UNLOCKED!</div>
 
         <div class="complete-stats-row">
           <div class="stat-pill">
@@ -504,16 +511,19 @@
 
           <div class="setting-row">
             <div class="setting-meta">
-              <strong>UNLOCK ALL MISSIONS</strong>
-              <small>Instantly unlock all 20 levels across all 5 cyberpunk worlds</small>
+              <strong>MISSION LOCK STATUS</strong>
+              <small>Unlock levels one by one as completed, or test all missions</small>
             </div>
-            <button id="btn-settings-unlock-all" class="cyber-btn cyber-btn-primary">🔓 UNLOCK ALL (20)</button>
+            <div class="setting-actions-row">
+              <button id="btn-settings-relock" class="cyber-btn cyber-btn-secondary">🔒 RELOCK MISSIONS</button>
+              <button id="btn-settings-unlock-all" class="cyber-btn cyber-btn-ghost">🔓 UNLOCK ALL (DEV)</button>
+            </div>
           </div>
 
           <div class="setting-row danger-row">
             <div class="setting-meta">
               <strong>RESET PROGRESS</strong>
-              <small>Clear completed history, coins and personal records</small>
+              <small>Lock levels 2-20, clear cleared missions, and reset coins</small>
             </div>
             <button id="btn-reset-records" class="btn-danger-outline">RESET SAVE</button>
           </div>
