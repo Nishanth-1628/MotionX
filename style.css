@@ -198,6 +198,36 @@ html, body {
   color: #ffd700;
 }
 
+.hud-checkpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-tech);
+  font-weight: 700;
+  font-size: 11px;
+  color: #7b94bf;
+  margin-top: 1px;
+}
+
+.hud-cp-val {
+  font-family: var(--font-tech);
+  font-size: 11px;
+  font-weight: 700;
+  color: #8899aa;
+  transition: all 0.25s ease;
+}
+
+.hud-cp-val.active {
+  color: #00f0ff;
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.7);
+  animation: cpPulse 1.5s infinite alternate ease-in-out;
+}
+
+@keyframes cpPulse {
+  0% { transform: scale(1); filter: drop-shadow(0 0 3px rgba(0, 240, 255, 0.5)); }
+  100% { transform: scale(1.08); filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.9)); }
+}
+
 /* Top-Center Dual-Hand On-Screen Gesture Indicator */
 .hud-gesture-card {
   align-items: center;

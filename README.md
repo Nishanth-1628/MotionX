@@ -25,9 +25,10 @@
   - **World 3 — Underground Foundry (Levels 9–12):** Piston Core, Steam Maze, Overclock, Conveyor Hazard.
   - **World 4 — Deep Cyberspace & Retrowave (Levels 13–16):** Data Stream, Glitch Vector, Syntax Sprint, Hyperspace Beat.
   - **World 5 — Ancient Celestial Ruins (Levels 17–20):** Forgotten Nexus, Titan's Gate, Chrono Collapse, The Chrono Core.
-- 🎯 **Pure Attempt System:** Strictly zero health/hearts. Every death is an attempt recorded with best scores tracked locally.
+- ❤️ **3 Lives System & Cyber Coins:** Start each level with 3 lives. Collect floating cyber coins to boost your score while navigating hazardous terrain!
+- 🚩 **Holographic Checkpoint Beacons:** Strategic mid-level checkpoints save your progress in real-time. When taking damage or falling, respawn directly at your active checkpoint with force-shield invulnerability while preserving collected coins!
 - 🎵 **Adaptive Chiptune Synth Audio:** Custom Web Audio API synthesizer matching level BPM and beats.
-- 🏆 **Local Leaderboard & Mission Archive:** Track your best attempts, clear rates, and statistics across all 20 levels.
+- 🏆 **Local Leaderboard & Mission Archive:** Track your scores, coins collected, and cleared levels across all 20 levels.
 
 ---
 

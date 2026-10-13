@@ -651,6 +651,27 @@
       osc2.stop(t + 0.29);
     }
 
+    playCheckpoint() {
+      if (!gameStateData.settings.sfx) return;
+      this.ensureContext();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      const freqs = [698.46, 880.00, 1046.50, 1318.51];
+      freqs.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = idx === freqs.length - 1 ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(freq, t + idx * 0.07);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.setValueAtTime(0.28, t + idx * 0.07);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.07 + 0.38);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t + idx * 0.07);
+        osc.stop(t + idx * 0.07 + 0.40);
+      });
+    }
+
     playPlayerHurt() {
       if (!gameStateData.settings.sfx) return;
       this.ensureContext();
@@ -1432,11 +1453,90 @@
     return coins;
   }
 
+  /**
+   * Generates strategic checkpoint beacons for the level layout along safe platforms
+   */
+  function generateLevelCheckpoints(level) {
+    const checkpoints = [];
+    const platforms = level.platforms || [];
+    const hazards = level.hazards || [];
+    const enemies = level.enemies || [];
+    const spawnX = (level.spawn && level.spawn.x) || 50;
+    const goalX = (level.goal && level.goal.x) || (level.width - 80);
+
+    const totalDist = goalX - spawnX;
+    const numCheckpoints = level.width > 3200 ? 2 : 1;
+    const targetRatios = numCheckpoints === 1 ? [0.50] : [0.35, 0.70];
+
+    function isSafeFromHazards(x, y) {
+      for (const h of hazards) {
+        const hx = h.x + (h.width || 28) / 2;
+        const hy = h.y + (h.height || 28) / 2;
+        if (Math.abs(x - hx) < 70 && Math.abs(y - hy) < 50) return false;
+      }
+      return true;
+    }
+
+    targetRatios.forEach((ratio, idx) => {
+      const targetX = spawnX + totalDist * ratio;
+      const candidates = platforms.filter(p => {
+        if (p.isMoving) return false;
+        if (p.width < 60) return false;
+        const midX = p.x + p.width / 2;
+        if (midX < spawnX + 250 || midX > goalX - 220) return false;
+        return true;
+      });
+
+      if (candidates.length === 0) return;
+
+      candidates.sort((a, b) => {
+        const distA = Math.abs((a.x + a.width / 2) - targetX);
+        const distB = Math.abs((b.x + b.width / 2) - targetX);
+        return distA - distB;
+      });
+
+      for (const plat of candidates) {
+        let candX = Math.round(plat.x + plat.width / 2);
+        const candY = plat.y - 24;
+
+        const nearEnemy = enemies.find(e => Math.abs(e.x - candX) < 65 && Math.abs(e.y - plat.y) < 40);
+        if (nearEnemy) {
+          if (nearEnemy.x > candX) {
+            candX = Math.max(plat.x + 25, candX - 35);
+          } else {
+            candX = Math.min(plat.x + plat.width - 25, candX + 35);
+          }
+        }
+
+        if (isSafeFromHazards(candX, plat.y)) {
+          if (!checkpoints.some(cp => Math.abs(cp.x - candX) < 250)) {
+            checkpoints.push({
+              id: 'cp_' + (idx + 1),
+              index: idx + 1,
+              x: candX,
+              y: candY,
+              platformY: plat.y,
+              width: 28,
+              height: 48,
+              active: false
+            });
+            break;
+          }
+        }
+      }
+    });
+
+    return checkpoints;
+  }
+
   function getLevelCopy(levelId) {
     const lvl = LEVELS.find(l => l.id === levelId) || LEVELS[0];
     const copy = JSON.parse(JSON.stringify(lvl));
     if (!copy.coins || copy.coins.length === 0) {
       copy.coins = generateLevelCoins(copy);
+    }
+    if (!copy.checkpoints || copy.checkpoints.length === 0) {
+      copy.checkpoints = generateLevelCheckpoints(copy);
     }
     return copy;
   }
@@ -3168,6 +3268,7 @@
       this.lives = 3;
       this.coinsCollected = 0;
       this.totalLevelCoins = 0;
+      this.activeCheckpoint = null;
 
       this.setupResize();
     }
@@ -3197,10 +3298,11 @@
       activeKeys.clear();
       touchMoveDirection = null;
 
-      // 3 Lives & Coins System
+      // 3 Lives, Coins & Checkpoint System
       this.lives = 3;
       this.coinsCollected = 0;
       this.totalLevelCoins = (this.currentLevel.coins && this.currentLevel.coins.length) || 0;
+      this.activeCheckpoint = null;
 
       this.updateHUDStats();
 
@@ -3365,6 +3467,17 @@
       if (coinsEl) {
         coinsEl.textContent = `🪙 ${String(this.coinsCollected).padStart(2, '0')} / ${String(this.totalLevelCoins).padStart(2, '0')}`;
       }
+
+      const cpEl = document.getElementById('hud-checkpoint-display-val');
+      if (cpEl) {
+        if (this.activeCheckpoint) {
+          cpEl.textContent = '🚩 SAVED';
+          cpEl.classList.add('active');
+        } else {
+          cpEl.textContent = '🚩 START';
+          cpEl.classList.remove('active');
+        }
+      }
     }
 
     takeDamage(reason = 'hazard') {
@@ -3381,22 +3494,27 @@
         this.addExplosion(this.player.x, this.player.y, '#ff3344', 30);
         this.addFloatingPopup(this.player.x, this.player.y - 25, '-1 LIFE', '#ff3344');
 
-        // Respawn player back at spawn, keeping collected coins intact!
-        this.player.x = this.currentLevel.spawn.x;
-        this.player.y = this.currentLevel.spawn.y;
+        // Respawn player at active checkpoint if reached, else level spawn! (Coins & remaining lives preserved)
+        const respawnPos = this.activeCheckpoint ? this.activeCheckpoint : this.currentLevel.spawn;
+        this.player.x = respawnPos.x;
+        this.player.y = respawnPos.y;
         this.player.vx = 0;
         this.player.vy = 0;
         this.player.isGrounded = false;
         this.player.invulnerableTimer = 2.0;
         this.player.state = 'idle';
 
-        // Camera recenter towards spawn
+        // Camera recenter towards respawn position
         const leadOffset = this.canvas.width * 0.40;
         const maxCamX = Math.max(0, this.currentLevel.width - this.canvas.width);
         this.cameraX = Math.max(0, Math.min(maxCamX, this.player.x - leadOffset));
         const worldH = this.currentLevel.height || 540;
-        if (worldH > this.canvas.height) {
-          this.cameraY = Math.max(0, Math.min(worldH - this.canvas.height, this.player.y - this.canvas.height * 0.55));
+        this.cameraY = worldH > this.canvas.height
+          ? Math.max(0, Math.min(worldH - this.canvas.height, this.player.y - this.canvas.height * 0.55))
+          : -(this.canvas.height - worldH) / 2;
+
+        if (this.activeCheckpoint) {
+          this.addFloatingPopup(this.player.x, this.player.y - 45, 'RESPAWNED AT CHECKPOINT', '#00f0ff');
         }
       } else {
         this.failLevel(reason);
@@ -3576,6 +3694,189 @@
       ctx.restore();
     }
 
+    addCheckpointBurst(x, y) {
+      for (let i = 0; i < 28; i++) {
+        const angle = (Math.PI * 2 / 28) * i + (Math.random() - 0.5) * 0.35;
+        const spd = 60 + Math.random() * 95;
+        const colors = ['#00f0ff', '#00ff88', '#ffffff', '#7000ff'];
+        this.particles.push({
+          x, y,
+          vx: Math.cos(angle) * spd,
+          vy: Math.sin(angle) * spd - 35,
+          color: colors[i % colors.length],
+          size: 2.5 + Math.random() * 3,
+          life: 0.65,
+          maxLife: 0.65
+        });
+      }
+    }
+
+    drawCheckpoint(cp) {
+      const ctx = this.ctx;
+      const x = Math.round(cp.x);
+      const platY = cp.platformY !== undefined ? Math.round(cp.platformY) : Math.round(cp.y + cp.height / 2);
+      const isActive = !!cp.active;
+
+      ctx.save();
+
+      // 1. Base Terminal Stand bolted on platform
+      const baseW = 32;
+      const baseH = 8;
+      ctx.fillStyle = '#0b1526';
+      ctx.fillRect(x - baseW / 2, platY - baseH, baseW, baseH);
+      ctx.strokeStyle = isActive ? '#00f0ff' : '#ffaa00';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - baseW / 2, platY - baseH, baseW, baseH);
+
+      // Base Neon Core Light
+      ctx.fillStyle = isActive ? '#00ff88' : '#ff8800';
+      ctx.fillRect(x - 7, platY - baseH + 2, 14, 4);
+
+      // 2. Dual Side Emitter Rods
+      ctx.strokeStyle = '#243b55';
+      ctx.lineWidth = 2;
+      // Left rod
+      ctx.beginPath();
+      ctx.moveTo(x - 10, platY - baseH);
+      ctx.lineTo(x - 10, platY - 42);
+      ctx.stroke();
+      // Right rod
+      ctx.beginPath();
+      ctx.moveTo(x + 10, platY - baseH);
+      ctx.lineTo(x + 10, platY - 42);
+      ctx.stroke();
+
+      // Emitter Pylon Tips
+      const tipColor = isActive ? '#00f0ff' : '#ffaa00';
+      ctx.fillStyle = tipColor;
+      ctx.beginPath();
+      ctx.arc(x - 10, platY - 42, 2.5, 0, Math.PI * 2);
+      ctx.arc(x + 10, platY - 42, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3. Central Energy Pillar / Hologram
+      const pulse = Math.sin(this.animTime * 6);
+      if (isActive) {
+        // ACTIVE STATE: Radiant Cyan/Green Holo-Column & Floating Flag
+        // Ground energy glow ring
+        ctx.save();
+        const groundGrad = ctx.createRadialGradient(x, platY - 2, 2, x, platY - 2, 22);
+        groundGrad.addColorStop(0, 'rgba(0, 255, 136, 0.6)');
+        groundGrad.addColorStop(0.5, 'rgba(0, 240, 255, 0.25)');
+        groundGrad.addColorStop(1, 'rgba(0, 240, 255, 0)');
+        ctx.fillStyle = groundGrad;
+        ctx.beginPath();
+        ctx.ellipse(x, platY - 2, 22, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Vertical holographic plasma beam
+        const beamGrad = ctx.createLinearGradient(x - 8, 0, x + 8, 0);
+        beamGrad.addColorStop(0, 'rgba(0, 240, 255, 0)');
+        beamGrad.addColorStop(0.3, 'rgba(0, 240, 255, 0.35)');
+        beamGrad.addColorStop(0.5, 'rgba(0, 255, 136, 0.55)');
+        beamGrad.addColorStop(0.7, 'rgba(0, 240, 255, 0.35)');
+        beamGrad.addColorStop(1, 'rgba(0, 240, 255, 0)');
+        ctx.fillStyle = beamGrad;
+        ctx.fillRect(x - 8, platY - 46, 16, 38);
+
+        // Rising cyber spark dashes
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 3; i++) {
+          const sparkOffset = ((this.animTime * 45 + i * 14) % 36);
+          const sparkY = platY - baseH - sparkOffset;
+          const sparkX = x + Math.sin(this.animTime * 8 + i) * 5;
+          ctx.beginPath();
+          ctx.moveTo(sparkX, sparkY);
+          ctx.lineTo(sparkX, sparkY - 4);
+          ctx.stroke();
+        }
+
+        // Floating Holographic Checkpoint Crest / Banner
+        const bannerBob = Math.sin(this.animTime * 4) * 3;
+        const bannerY = platY - 50 + bannerBob;
+
+        // Holographic Flag / Diamond
+        ctx.save();
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 10;
+
+        // Diamond emblem
+        ctx.fillStyle = '#00f0ff';
+        ctx.beginPath();
+        ctx.moveTo(x, bannerY - 10);
+        ctx.lineTo(x + 9, bannerY);
+        ctx.lineTo(x, bannerY + 10);
+        ctx.lineTo(x - 9, bannerY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Checkmark inside diamond
+        ctx.strokeStyle = '#05101f';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(x - 4, bannerY);
+        ctx.lineTo(x - 1, bannerY + 4);
+        ctx.lineTo(x + 5, bannerY - 4);
+        ctx.stroke();
+        ctx.restore();
+
+        // Holographic text "SAVED"
+        ctx.font = '600 8px var(--font-pixel, monospace)';
+        ctx.fillStyle = '#00ffcc';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#00ff88';
+        ctx.shadowBlur = 6;
+        ctx.fillText('SAVED', x, bannerY - 14);
+
+      } else {
+        // INACTIVE STATE: Pulsing Amber Beacon
+        // Faint scan wave
+        const waveY = platY - baseH - ((this.animTime * 24) % 32);
+        ctx.strokeStyle = 'rgba(255, 170, 0, 0.35)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(x - 8, waveY);
+        ctx.lineTo(x + 8, waveY);
+        ctx.stroke();
+
+        // Soft holographic core beam
+        ctx.fillStyle = `rgba(255, 170, 0, ${0.15 + pulse * 0.08})`;
+        ctx.fillRect(x - 6, platY - 42, 12, 34);
+
+        // Floating Inactive Diamond / Node
+        const bannerBob = Math.sin(this.animTime * 3) * 2;
+        const bannerY = platY - 48 + bannerBob;
+
+        ctx.save();
+        ctx.shadowColor = '#ffaa00';
+        ctx.shadowBlur = 6;
+        ctx.strokeStyle = '#ffaa00';
+        ctx.lineWidth = 1.8;
+        ctx.fillStyle = 'rgba(255, 170, 0, 0.4)';
+        ctx.beginPath();
+        ctx.moveTo(x, bannerY - 7);
+        ctx.lineTo(x + 7, bannerY);
+        ctx.lineTo(x, bannerY + 7);
+        ctx.lineTo(x - 7, bannerY);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // Holographic text "CHECKPOINT"
+        ctx.font = '7px var(--font-pixel, monospace)';
+        ctx.fillStyle = 'rgba(255, 170, 0, 0.8)';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#ff8800';
+        ctx.shadowBlur = 4;
+        ctx.fillText('CHECKPOINT', x, bannerY - 11);
+      }
+
+      ctx.restore();
+    }
+
     // --- PHYSICS & COLLISIONS ---
     updateControlsInput(dt) {
       if (!this.player || !this.player.isAlive) return;
@@ -3741,6 +4042,24 @@
         }
       }
 
+      // Check Checkpoint Beacons
+      if (this.currentLevel.checkpoints) {
+        for (const cp of this.currentLevel.checkpoints) {
+          if (!cp.active && this.checkAABB(p, cp)) {
+            cp.active = true;
+            const respawnY = (cp.platformY !== undefined ? cp.platformY : (cp.y + cp.height / 2)) - (p.height / 2);
+            if (!this.activeCheckpoint || cp.x >= this.activeCheckpoint.x) {
+              this.activeCheckpoint = { x: cp.x, y: respawnY };
+            }
+            sound.playCheckpoint();
+            this.addFloatingPopup(cp.x, cp.y - 48, '🚩 CHECKPOINT SAVED!', '#00f0ff');
+            this.addCheckpointBurst(cp.x, cp.y);
+            this.screenShake = 6;
+            this.updateHUDStats();
+          }
+        }
+      }
+
       // Check Collectible Coins (Kept on life loss!)
       if (this.currentLevel.coins) {
         for (const coin of this.currentLevel.coins) {
@@ -3778,7 +4097,7 @@
       const halfH = p.height / 2;
       for (const plat of platforms) {
         if (this.checkPlatformOverlap(p, plat)) {
-          if (p.vy >= 0) {
+          if (p.vy > 0) {
             p.y = plat.y - halfH;
             p.vy = 0;
             p.isGrounded = true;
@@ -3807,7 +4126,7 @@
       const pTop = p.y - p.height / 2;
       const pBottom = p.y + p.height / 2;
       return (pRight > plat.x && pLeft < plat.x + plat.width &&
-              pBottom >= plat.y && pTop < plat.y + plat.height);
+              pBottom > plat.y && pTop < plat.y + plat.height);
     }
 
     checkAABB(a, b) {
@@ -4019,6 +4338,12 @@
         if (this.currentLevel.targetBlocks) {
           for (const tb of this.currentLevel.targetBlocks) {
             if (!tb.isDestroyed) this.drawTargetBlock(tb);
+          }
+        }
+        // Checkpoint Beacons
+        if (this.currentLevel.checkpoints) {
+          for (const cp of this.currentLevel.checkpoints) {
+            this.drawCheckpoint(cp);
           }
         }
         // Collectible Coins
