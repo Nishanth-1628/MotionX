@@ -28,12 +28,12 @@
   const STORAGE_KEY_LEADERBOARD = 'motionx_leaderboard_v1';
 
   const DEFAULT_LEADERBOARD = [
-    { name: 'CYBER_NEXUS', score: 25000, levels: 20, bestAttempts: 20 },
-    { name: 'NEO_RUNNER', score: 19800, levels: 18, bestAttempts: 25 },
-    { name: 'SYNTH_BLADE', score: 14500, levels: 14, bestAttempts: 22 },
-    { name: 'PHANTOM_99', score: 10200, levels: 10, bestAttempts: 18 },
-    { name: 'GLITCH_FOX', score: 6800, levels: 7, bestAttempts: 13 },
-    { name: 'BYTE_STRIKER', score: 3200, levels: 3, bestAttempts: 6 }
+    { name: 'CYBER_NEXUS', score: 25000, levels: 20, coins: 200 },
+    { name: 'NEO_RUNNER', score: 19800, levels: 18, coins: 160 },
+    { name: 'SYNTH_BLADE', score: 14500, levels: 14, coins: 130 },
+    { name: 'PHANTOM_99', score: 10200, levels: 10, coins: 90 },
+    { name: 'GLITCH_FOX', score: 6800, levels: 7, coins: 65 },
+    { name: 'BYTE_STRIKER', score: 3200, levels: 3, coins: 25 }
   ];
 
   let gameStateData = {
@@ -41,8 +41,10 @@
     unlockedLevel: 20,
     lastPlayedLevel: 1,
     completedLevels: [],
-    bestAttempts: {},       // { [levelId]: bestAttemptsCount }
-    levelAttempts: {},      // { [levelId]: currentAttemptCount }
+    totalCoins: 0,
+    levelCoins: {},         // { [levelId]: coinsCollectedCount }
+    bestAttempts: {},       // preserved for backward compat
+    levelAttempts: {},      // preserved for backward compat
     settings: { ...defaultSettings }
   };
 
@@ -56,6 +58,8 @@
           unlockedLevel: 20, // All 20 levels unlocked
           lastPlayedLevel: parsed.lastPlayedLevel || parsed.unlockedLevel || 1,
           completedLevels: Array.isArray(parsed.completedLevels) ? parsed.completedLevels : [],
+          totalCoins: parsed.totalCoins || 0,
+          levelCoins: parsed.levelCoins || {},
           bestAttempts: parsed.bestAttempts || {},
           levelAttempts: parsed.levelAttempts || {},
           settings: { ...defaultSettings, ...(parsed.settings || {}) }
@@ -101,13 +105,10 @@
 
   function calculatePlayerScore() {
     const completedCount = (gameStateData.completedLevels || []).length;
-    let totalAttempts = 0;
-    for (const lvlId in gameStateData.bestAttempts) {
-      totalAttempts += (gameStateData.bestAttempts[lvlId] || 1);
-    }
+    const coins = gameStateData.totalCoins || 0;
     const levelScore = completedCount * 1000;
-    const efficiencyBonus = Math.max(0, (completedCount * 4 - totalAttempts) * 150);
-    return levelScore + efficiencyBonus;
+    const coinBonus = coins * 100;
+    return levelScore + coinBonus;
   }
 
   function syncCurrentPlayerToLeaderboard() {
@@ -115,10 +116,7 @@
     if (!name) return;
     const score = calculatePlayerScore();
     const levels = (gameStateData.completedLevels || []).length;
-    let totalAttempts = 0;
-    for (const lvlId in gameStateData.bestAttempts) {
-      totalAttempts += (gameStateData.bestAttempts[lvlId] || 1);
-    }
+    const coins = gameStateData.totalCoins || 0;
 
     const list = getLeaderboardData();
     const idx = list.findIndex(e => (e.name || '').trim().toLowerCase() === name.toLowerCase());
@@ -126,7 +124,7 @@
       name: name,
       score: score,
       levels: levels,
-      bestAttempts: totalAttempts || (levels > 0 ? levels : 1)
+      coins: coins
     };
 
     if (idx >= 0) {
@@ -135,7 +133,7 @@
       list.push(entry);
     }
 
-    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || (a.bestAttempts - b.bestAttempts));
+    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || ((b.coins || 0) - (a.coins || 0)));
     saveLeaderboardData(list);
   }
 
@@ -228,7 +226,7 @@
   function renderLeaderboard() {
     syncCurrentPlayerToLeaderboard();
     const list = getLeaderboardData();
-    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || (a.bestAttempts - b.bestAttempts));
+    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || ((b.coins || 0) - (a.coins || 0)));
 
     const currentName = (gameStateData.playerName || '').trim().toLowerCase();
     let currentRank = '-';
@@ -623,6 +621,52 @@
       gain.connect(this.ctx.destination);
       osc.start(t);
       osc.stop(t + 0.04);
+    }
+
+    playCoinPickup() {
+      if (!gameStateData.settings.sfx) return;
+      this.ensureContext();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      // High-pitched 2-tone melodic chime (B5 to E6)
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc1.type = 'sine';
+      osc2.type = 'triangle';
+      osc1.frequency.setValueAtTime(987.77, t); // B5
+      osc1.frequency.setValueAtTime(1318.51, t + 0.08); // E6
+      osc2.frequency.setValueAtTime(1975.53, t + 0.08); // B6 shimmer
+
+      gain.gain.setValueAtTime(0.24, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc1.start(t);
+      osc2.start(t + 0.08);
+      osc1.stop(t + 0.29);
+      osc2.stop(t + 0.29);
+    }
+
+    playPlayerHurt() {
+      if (!gameStateData.settings.sfx) return;
+      this.ensureContext();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(260, t);
+      osc.frequency.exponentialRampToValueAtTime(75, t + 0.18);
+      gain.gain.setValueAtTime(0.38, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.22);
     }
   }
 
@@ -1308,9 +1352,93 @@
     }
   ];
 
+  /**
+   * Generates collectible cyber coins for the level layout along platforms, jump gaps, and target blocks
+   */
+  function generateLevelCoins(level) {
+    const coins = [];
+    const platforms = level.platforms || [];
+    const hazards = level.hazards || [];
+    const targetBlocks = level.targetBlocks || [];
+    const spawnX = (level.spawn && level.spawn.x) || 50;
+    const goalX = (level.goal && level.goal.x) || 2000;
+
+    function isNearHazard(x, y) {
+      for (const h of hazards) {
+        if (Math.abs(x - (h.x + (h.width || 28) / 2)) < 35 && Math.abs(y - h.y) < 45) return true;
+      }
+      return false;
+    }
+
+    platforms.forEach((plat, pIdx) => {
+      const startX = plat.x;
+      const endX = plat.x + plat.width;
+      const platY = plat.y;
+
+      let count = 0;
+      if (plat.width >= 320) count = 3;
+      else if (plat.width >= 160) count = 2;
+      else if (plat.width >= 80) count = 1;
+
+      if (count === 1) {
+        const cx = Math.round(startX + plat.width / 2);
+        const cy = Math.round(platY - 32);
+        if (cx > spawnX + 80 && cx < goalX - 30 && !isNearHazard(cx, cy)) {
+          coins.push({ x: cx, y: cy, width: 22, height: 22, collected: false });
+        }
+      } else if (count === 2) {
+        const c1 = Math.round(startX + plat.width * 0.32);
+        const c2 = Math.round(startX + plat.width * 0.68);
+        const cy = Math.round(platY - 32);
+        if (c1 > spawnX + 80 && c1 < goalX - 30 && !isNearHazard(c1, cy)) {
+          coins.push({ x: c1, y: cy, width: 22, height: 22, collected: false });
+        }
+        if (c2 > spawnX + 80 && c2 < goalX - 30 && !isNearHazard(c2, cy)) {
+          coins.push({ x: c2, y: cy, width: 22, height: 22, collected: false });
+        }
+      } else if (count >= 3) {
+        const step = plat.width / 4;
+        for (let i = 1; i <= 3; i++) {
+          const cx = Math.round(startX + step * i);
+          const cy = Math.round(platY - 32);
+          if (cx > spawnX + 80 && cx < goalX - 30 && !isNearHazard(cx, cy)) {
+            coins.push({ x: cx, y: cy, width: 22, height: 22, collected: false });
+          }
+        }
+      }
+
+      if (pIdx < platforms.length - 1) {
+        const nextPlat = platforms[pIdx + 1];
+        const gap = nextPlat.x - endX;
+        if (gap >= 40 && gap <= 240) {
+          const midX = Math.round(endX + gap / 2);
+          const midY = Math.round(Math.min(platY, nextPlat.y) - 54);
+          if (midX > spawnX + 80 && midX < goalX - 30) {
+            coins.push({ x: midX, y: midY, width: 22, height: 22, collected: false });
+          }
+        }
+      }
+    });
+
+    targetBlocks.forEach(tb => {
+      const cx = Math.round(tb.x);
+      const cy = Math.round(tb.y - 38);
+      if (!coins.some(c => Math.hypot(c.x - cx, c.y - cy) < 25)) {
+        coins.push({ x: cx, y: cy, width: 22, height: 22, collected: false });
+      }
+    });
+
+    coins.sort((a, b) => a.x - b.x);
+    return coins;
+  }
+
   function getLevelCopy(levelId) {
     const lvl = LEVELS.find(l => l.id === levelId) || LEVELS[0];
-    return JSON.parse(JSON.stringify(lvl));
+    const copy = JSON.parse(JSON.stringify(lvl));
+    if (!copy.coins || copy.coins.length === 0) {
+      copy.coins = generateLevelCoins(copy);
+    }
+    return copy;
   }
 
   // =========================================================================
@@ -1322,6 +1450,11 @@
   const attackCooldown = 500; // 500ms cooldown (Section 8 & 12)
   let attackLocked = false;
   let fistAttackTriggered = false;
+
+  // Active keyboard keys Set & touch state for simultaneous multi-key controls
+  const activeKeys = new Set();
+  let touchMoveDirection = null; // 'LEFT' | 'RIGHT' | null
+  let lastHorizontalKey = null; // 'LEFT' | 'RIGHT' | null (supports instant direction reversal without stopping)
 
   function updatePlayerSpeedFromSettings() {
     const spd = (gameStateData.settings && gameStateData.settings.playerSpeed) || 'normal';
@@ -1466,6 +1599,10 @@
     'RIGHT': '👉',
     'UP': '☝️',
     'DOWN': '👇',
+    'UP_RIGHT': '↗️',
+    'UP_LEFT': '↖️',
+    'DOWN_RIGHT': '↘️',
+    'DOWN_LEFT': '↙️',
     'ATTACK': '✊',
     'READY': '✋',
     'NONE': '✋'
@@ -1483,9 +1620,9 @@
         });
         mediaPipeHandsInstance.setOptions({
           maxNumHands: 2, // TWO HANDS SIMULTANEOUSLY!
-          modelComplexity: 0,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5
+          modelComplexity: 1, // Full precision model: rejects head/face false-positives
+          minDetectionConfidence: 0.68, // High threshold: only genuine hands
+          minTrackingConfidence: 0.65
         });
         mediaPipeHandsInstance.onResults(handleMediaPipeResults);
         isMediaPipeReady = true;
@@ -1711,14 +1848,28 @@
     const magnitude = Math.hypot(dx, dy);
     if (magnitude < threshold) return null;
 
-    // Horizontal vs Vertical dominance
-    if (absDx > absDy * 1.15 && absDx > threshold) {
+    // Horizontal vs Vertical dominance & Diagonal Simultaneous Directions
+    if (absDx > absDy * 1.45 && absDx > threshold) {
       return dx < 0 ? 'LEFT' : 'RIGHT';
-    } else if (absDy > absDx * 1.15 && absDy > threshold) {
+    } else if (absDy > absDx * 1.45 && absDy > threshold) {
       return dy < 0 ? 'UP' : 'DOWN';
     }
 
-    return null;
+    // Diagonal multi-direction zones (combining horizontal run + vertical jump/crouch!)
+    if (absDx >= threshold * 0.70 && absDy >= threshold * 0.70) {
+      if (dy < 0) {
+        return dx > 0 ? 'UP_RIGHT' : 'UP_LEFT';
+      } else {
+        return dx > 0 ? 'DOWN_RIGHT' : 'DOWN_LEFT';
+      }
+    }
+
+    // Fallback to dominant component
+    if (absDx >= absDy) {
+      return dx < 0 ? 'LEFT' : 'RIGHT';
+    } else {
+      return dy < 0 ? 'UP' : 'DOWN';
+    }
   }
 
   /**
@@ -1731,6 +1882,54 @@
    * 5. 👇 DOWN
    * 6. Open / unclear hand -> NONE
    */
+  /**
+   * Anatomical Hand Validation Filter:
+   * Rejects faces, heads, necks, shoulders, or ambient visual noise.
+   * Ensures that MediaPipe has tracked an actual human hand with genuine palm & finger geometry.
+   */
+  function isGenuineHandLandmarks(lm, hInfo = null) {
+    if (!lm || lm.length < 21) return false;
+
+    // Reject low-confidence predictions from MediaPipe
+    if (hInfo && typeof hInfo.score === 'number' && hInfo.score < 0.65) {
+      return false;
+    }
+
+    const wrist = lm[0];
+    const mcpIndex = lm[5];
+    const mcpMiddle = lm[9];
+    const mcpPinky = lm[17];
+    const tipMiddle = lm[12];
+
+    // Palm dimensions
+    const palmLength = Math.hypot(mcpMiddle.x - wrist.x, mcpMiddle.y - wrist.y);
+    const palmWidth = Math.hypot(mcpPinky.x - mcpIndex.x, mcpPinky.y - mcpIndex.y);
+
+    // Palm length must be reasonable for a human hand (between 0.04 and 0.48 screen units)
+    if (palmLength < 0.04 || palmLength > 0.48) return false;
+    if (palmWidth < 0.03 || palmWidth > 0.45) return false;
+
+    const palmRatio = palmLength / (palmWidth + 0.001);
+    if (palmRatio < 0.45 || palmRatio > 3.0) return false;
+
+    // Finger reach check (distance from wrist to middle fingertip)
+    const middleReach = Math.hypot(tipMiddle.x - wrist.x, tipMiddle.y - wrist.y);
+    if (middleReach < 0.038 || middleReach > 0.65) return false;
+
+    // Head / Face Area Exclusion:
+    // If center of detected landmark cluster is located in the upper-center face zone
+    // and wrist is located near top with no downward forearm orientation, reject it as facial artifact
+    const rawCx = (wrist.x + mcpMiddle.x) / 2;
+    const rawCy = (wrist.y + mcpMiddle.y) / 2;
+    if (rawCy < 0.38 && rawCx > 0.28 && rawCx < 0.72) {
+      if (wrist.y < 0.24 && tipMiddle.y >= wrist.y) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   /**
    * Classifies detected hands into LEFT HAND (Attack) and RIGHT HAND (Movement).
    * Enforces 2-hand limit and persistent identity locking.
@@ -1761,12 +1960,18 @@
       return { leftHand, rightHand };
     }
 
-    // Step 1: Extract candidate hand data
+    // Step 1: Extract candidate hand data (ONLY GENUINE HANDS - STRICT HEAD/FACE EXCLUSION)
     const rawCandidates = [];
     for (let i = 0; i < multiLandmarks.length; i++) {
       const lm = multiLandmarks[i];
       if (!lm || lm.length < 21) continue;
       const hInfo = (multiHandedness && multiHandedness[i]) ? multiHandedness[i] : null;
+
+      // STRICT FILTER: Reject heads, faces, or non-hand noise
+      if (!isGenuineHandLandmarks(lm, hInfo)) {
+        continue;
+      }
+
       const wrist = lm[0];
       const mcp = lm[9];
       const rawCx = (wrist.x + mcp.x) / 2;
@@ -1790,7 +1995,7 @@
     }
 
     // Step 2: "IF THERE IS MULTIPLE HANDS TAKE ONLY 2 HANDS"
-    // Prioritize candidates closest to our currently locked hands, then by size/centrality.
+    // Prioritize candidates closest to our currently locked hands, then by size
     rawCandidates.forEach(cand => {
       let priorityScore = cand.palmSize * 2.0;
       if (handLockTracker.left.isLocked && handLockTracker.left.lastX !== null) {
@@ -1805,8 +2010,6 @@
           priorityScore += (MAX_HAND_ASSOCIATION_DIST - dR) * 15;
         }
       }
-      const distFromCenter = Math.hypot(cand.screenX - 0.5, cand.screenY - 0.5);
-      priorityScore -= distFromCenter * 0.3;
       cand.priority = priorityScore;
     });
 
@@ -2046,7 +2249,7 @@
   function detectRightHandMovement(landmarks) {
     if (!landmarks || landmarks.length < 21) return 'NONE';
     const pointDir = detectPointDirection(landmarks);
-    if (pointDir === 'LEFT' || pointDir === 'RIGHT' || pointDir === 'UP' || pointDir === 'DOWN') {
+    if (pointDir) {
       return pointDir;
     }
     return 'NONE';
@@ -2056,15 +2259,21 @@
   const detectLeftHandMovement = detectRightHandMovement;
 
   /**
-   * LEFT HAND: ATTACK ONLY
+   * LEFT HAND: ATTACK & DUAL-HAND ACTION
    * Evaluates closed fist ✊ -> ATTACK
+   * Evaluates pointing ☝️ -> UP (Jump) or directional action
    * Open or relaxed hand ✋ -> READY / NONE
-   * LEFT HAND NEVER CONTROLS MOVEMENT!
    */
   function detectLeftHandAttack(landmarks) {
     if (!landmarks || landmarks.length < 21) return 'NONE';
     if (isFist(landmarks)) {
       return 'ATTACK';
+    }
+    const pointDir = detectPointDirection(landmarks);
+    if (pointDir === 'UP' || pointDir === 'UP_RIGHT' || pointDir === 'UP_LEFT') {
+      return 'UP';
+    } else if (pointDir) {
+      return pointDir;
     }
     return 'READY';
   }
@@ -2079,9 +2288,7 @@
     if (!landmarks || landmarks.length < 21) return 'NONE';
     if (isFist(landmarks)) return 'ATTACK';
     const pointDir = detectPointDirection(landmarks);
-    if (pointDir === 'LEFT' || pointDir === 'RIGHT' || pointDir === 'UP' || pointDir === 'DOWN') {
-      return pointDir;
-    }
+    if (pointDir) return pointDir;
     return 'NONE';
   }
 
@@ -2154,21 +2361,35 @@
 
     // 3. EXECUTE ACTIONS SIMULTANEOUSLY ON GAME ENGINE
     if (currentGameInstance && currentGameInstance.state === 'PLAYING') {
-      // --- RIGHT HAND MOVEMENT EXECUTION ---
+      // --- RIGHT HAND MOVEMENT & DIAGONAL ACTIONS EXECUTION ---
       if (rightConfirmedGesture === 'LEFT') {
         movePlayerLeft();
       } else if (rightConfirmedGesture === 'RIGHT') {
         movePlayerRight();
+      } else if (rightConfirmedGesture === 'UP_RIGHT') {
+        movePlayerRight();
+        movePlayerUp();
+      } else if (rightConfirmedGesture === 'UP_LEFT') {
+        movePlayerLeft();
+        movePlayerUp();
+      } else if (rightConfirmedGesture === 'DOWN_RIGHT') {
+        movePlayerRight();
+        movePlayerDown();
+      } else if (rightConfirmedGesture === 'DOWN_LEFT') {
+        movePlayerLeft();
+        movePlayerDown();
       } else if (rightConfirmedGesture === 'UP') {
         movePlayerUp();
       } else if (rightConfirmedGesture === 'DOWN') {
         movePlayerDown();
       } else {
-        // 'NONE' or open hand neutral -> Stop player movement
-        stopPlayer();
+        // 'NONE' or open hand neutral -> Stop player movement only if keyboard/touch is not active
+        if (activeKeys.size === 0 && touchMoveDirection === null) {
+          stopPlayer();
+        }
       }
 
-      // --- LEFT HAND ATTACK EXECUTION (SIMULTANEOUS!) ---
+      // --- LEFT HAND ATTACK OR DUAL-HAND SECONDARY ACTION EXECUTION (SIMULTANEOUS!) ---
       if (leftConfirmedGesture === 'ATTACK') {
         // Enforce 500ms cooldown + 1 punch per fist
         if (!attackLocked && !leftFistHeld && (now - lastLeftAttackTime >= ATTACK_COOLDOWN_MS)) {
@@ -2178,6 +2399,11 @@
           lastRightAttackTime = now; // backward-compatibility alias
           triggerAttack(); // Calls the SAME triggerAttack() as the button!
         }
+      } else if (leftConfirmedGesture === 'UP') {
+        // Dual-hand: Left hand pointing UP triggers Jump simultaneously with Right hand movement!
+        movePlayerUp();
+        leftFistHeld = false;
+        rightFistHeld = false;
       } else {
         // Fist released / hand opened -> allow next punch
         leftFistHeld = false;
@@ -2239,8 +2465,11 @@
     if (p.isGrounded) {
       p.vy = -JUMP_FORCE;
       p.isGrounded = false;
+      p.jumpBuffer = 0;
       sound.playJump();
       currentGameInstance.addDustPuff(p.x, p.y + p.height / 2);
+    } else {
+      p.jumpBuffer = 0.20; // 200ms jump buffer for multi-key fluid jumps
     }
   }
 
@@ -2264,6 +2493,7 @@
    */
   function stopPlayer() {
     if (!currentGameInstance || !currentGameInstance.player || !currentGameInstance.player.isAlive) return;
+    if (activeKeys.size > 0 || touchMoveDirection !== null) return;
     const p = currentGameInstance.player;
     p.vx = 0;
     if (p.isGrounded && p.state !== 'attack') {
@@ -2493,10 +2723,15 @@
     const guideAttack = document.getElementById('guide-cell-attack');
     const guideNone = document.getElementById('guide-cell-none');
 
-    if (guideUp) guideUp.classList.toggle('active', rightConfirmedGesture === 'UP');
-    if (guideLeft) guideLeft.classList.toggle('active', rightConfirmedGesture === 'LEFT');
-    if (guideRight) guideRight.classList.toggle('active', rightConfirmedGesture === 'RIGHT');
-    if (guideDown) guideDown.classList.toggle('active', rightConfirmedGesture === 'DOWN');
+    const isUp = rightConfirmedGesture === 'UP' || rightConfirmedGesture === 'UP_RIGHT' || rightConfirmedGesture === 'UP_LEFT' || leftConfirmedGesture === 'UP';
+    const isLeft = rightConfirmedGesture === 'LEFT' || rightConfirmedGesture === 'UP_LEFT' || rightConfirmedGesture === 'DOWN_LEFT';
+    const isRight = rightConfirmedGesture === 'RIGHT' || rightConfirmedGesture === 'UP_RIGHT' || rightConfirmedGesture === 'DOWN_RIGHT';
+    const isDown = rightConfirmedGesture === 'DOWN' || rightConfirmedGesture === 'DOWN_LEFT' || rightConfirmedGesture === 'DOWN_RIGHT';
+
+    if (guideUp) guideUp.classList.toggle('active', isUp);
+    if (guideLeft) guideLeft.classList.toggle('active', isLeft);
+    if (guideRight) guideRight.classList.toggle('active', isRight);
+    if (guideDown) guideDown.classList.toggle('active', isDown);
     if (guideAttack) guideAttack.classList.toggle('active', isLeftAtk);
     if (guideNone) guideNone.classList.remove('active'); // Stop point removed / kept inactive
 
@@ -2646,6 +2881,19 @@
       rightConfidence = 0;
     }
 
+    // Single Hand Multi-Action Capability:
+    // If only 1 hand is present in camera, let it do BOTH Attack (fist) and Movement/Jump (pointing)!
+    if (detectedHandsCount === 1) {
+      const activeHand = smoothedRight || smoothedLeft;
+      if (activeHand && isFist(activeHand)) {
+        rawLeft = 'ATTACK';
+        rawRight = 'NONE';
+      } else if (activeHand) {
+        rawLeft = 'NONE';
+        rawRight = detectRightHandMovement(activeHand);
+      }
+    }
+
     // Backward-compatibility aliases
     previousSmoothedLandmarks = smoothedRight || smoothedLeft;
     currentDetectedGesture = rawRight !== 'NONE' ? rawRight : rawLeft;
@@ -2785,15 +3033,25 @@
     let rightCount = 0, rightSumX = 0, rightSumY = 0;
     const midX = w / 2;
 
+    // STRICT HEAD & FACE EXCLUSION:
+    // A seated user's head, face, eyes, neck, and shoulders occupy the upper-center area:
+    // Top 62% vertically (py < h * 0.62) and center 60% horizontally (px > w * 0.20 && px < w * 0.80).
+    // NEVER detect skin pixels in this zone to completely ignore head/face!
     for (let i = 0; i < data.length; i += 4) {
+      const px = (i / 4) % w;
+      const py = Math.floor((i / 4) / w);
+
+      // Exclude head and face zone completely
+      if (py < h * 0.62 && px > w * 0.20 && px < w * 0.80) {
+        continue;
+      }
+
       const r = data[i], g = data[i + 1], b = data[i + 2];
       const isSkin = (r > 95 && g > 40 && b > 20 &&
                       (Math.max(r, g, b) - Math.min(r, g, b) > 15) &&
                       Math.abs(r - g) > 15 && r > g && r > b);
 
       if (isSkin) {
-        const px = (i / 4) % w;
-        const py = Math.floor((i / 4) / w);
         if (px < midX) {
           leftCount++; leftSumX += px; leftSumY += py;
         } else {
@@ -2807,24 +3065,27 @@
     let rawRight = 'NONE';
 
     // In mirrored mode: left half of camera canvas is Left Hand (Attack)
-    if (leftCount > 180) {
+    if (leftCount > 300) {
       leftHandDetected = true;
-      rawLeft = (leftCount > 400) ? 'ATTACK' : 'READY';
+      rawLeft = (leftCount > 600) ? 'ATTACK' : 'READY';
     } else {
       leftHandDetected = false;
     }
 
     // Right half of camera canvas is Right Hand (Movement)
-    if (rightCount > 180) {
+    if (rightCount > 300) {
       rightHandDetected = true;
       const cx = ((rightSumX / rightCount) - midX) / midX;
       const cy = (rightSumY / rightCount) / h;
       const dx = cx - 0.5;
       const dy = cy - 0.5;
-      if (Math.abs(dx) > Math.abs(dy) * 1.2 && Math.abs(dx) > 0.12) {
+      if (Math.abs(dx) > Math.abs(dy) * 1.4 && Math.abs(dx) > 0.12) {
         rawRight = dx < 0 ? (isMirror ? 'RIGHT' : 'LEFT') : (isMirror ? 'LEFT' : 'RIGHT');
-      } else if (Math.abs(dy) > Math.abs(dx) * 1.2 && Math.abs(dy) > 0.12) {
+      } else if (Math.abs(dy) > Math.abs(dx) * 1.4 && Math.abs(dy) > 0.12) {
         rawRight = dy < 0 ? 'UP' : 'DOWN';
+      } else if (Math.abs(dx) > 0.08 && Math.abs(dy) > 0.08) {
+        const hDir = dx < 0 ? (isMirror ? 'RIGHT' : 'LEFT') : (isMirror ? 'LEFT' : 'RIGHT');
+        rawRight = dy < 0 ? (hDir === 'RIGHT' ? 'UP_RIGHT' : 'UP_LEFT') : (hDir === 'RIGHT' ? 'DOWN_RIGHT' : 'DOWN_LEFT');
       }
     } else {
       rightHandDetected = false;
@@ -2901,6 +3162,12 @@
       this.particles = [];
       this.shadowGhosts = [];
       this.ghostTimer = 0;
+      this.floatingPopups = [];
+      this.damageFlashTimer = 0;
+      this.maxLives = 3;
+      this.lives = 3;
+      this.coinsCollected = 0;
+      this.totalLevelCoins = 0;
 
       this.setupResize();
     }
@@ -2925,15 +3192,17 @@
       this.particles = [];
       this.shadowGhosts = [];
       this.ghostTimer = 0;
+      this.floatingPopups = [];
+      this.damageFlashTimer = 0;
+      activeKeys.clear();
+      touchMoveDirection = null;
 
-      const currentAttempt = getLevelAttempt(levelId);
-      const best = gameStateData.bestAttempts[levelId];
+      // 3 Lives & Coins System
+      this.lives = 3;
+      this.coinsCollected = 0;
+      this.totalLevelCoins = (this.currentLevel.coins && this.currentLevel.coins.length) || 0;
 
-      // Update HUD with Level Number & Thematic Realm Badge
-      const lvlTheme = getLevelTheme(levelId);
-      document.getElementById('hud-level-display').textContent = `LVL ${String(levelId).padStart(2, '0')} • ${lvlTheme.icon} ${lvlTheme.shortName.toUpperCase()}`;
-      document.getElementById('hud-attempt-display').textContent = `CURRENT ATTEMPT: ${String(currentAttempt).padStart(2, '0')}`;
-      document.getElementById('hud-best-display').textContent = `BEST ATTEMPT: ${best ? best : '--'}`;
+      this.updateHUDStats();
 
       // Spawn Player (Enlarged player size for enhanced visibility)
       this.player = {
@@ -2950,7 +3219,9 @@
         hasReachedGoal: false,
         state: 'idle',
         attackTimer: 0,
-        attackDuration: 0.22
+        attackDuration: 0.22,
+        invulnerableTimer: 0,
+        jumpBuffer: 0
       };
 
       // Initialize Camera with forward visibility offset and vertical centering/following
@@ -2997,6 +3268,7 @@
       const attackZone = document.getElementById('attack-zone-container');
       const touchDpad = document.getElementById('touch-controls-fallback');
       const guidePanel = document.getElementById('gesture-guide-panel');
+      const kbHint = document.getElementById('keyboard-controls-hint');
 
       if (screenId === null) {
         // In Gameplay
@@ -3005,12 +3277,14 @@
         if (guidePanel) guidePanel.classList.remove('hidden');
         if (attackZone) attackZone.classList.toggle('hidden', !gameStateData.settings.attackZoneEnabled);
         if (touchDpad) touchDpad.classList.toggle('hidden', gameStateData.settings.controlMode !== 'touch');
+        if (kbHint) kbHint.classList.remove('hidden');
       } else {
         if (hud) hud.classList.add('hidden');
         if (camPanel) camPanel.classList.add('hidden');
         if (guidePanel) guidePanel.classList.add('hidden');
         if (attackZone) attackZone.classList.add('hidden');
         if (touchDpad) touchDpad.classList.add('hidden');
+        if (kbHint) kbHint.classList.add('hidden');
       }
     }
 
@@ -3071,17 +3345,71 @@
       }
     }
 
+    updateHUDStats() {
+      const lvlTheme = getLevelTheme(this.currentLevelId);
+      const lvlEl = document.getElementById('hud-level-display');
+      if (lvlEl) {
+        lvlEl.textContent = `LVL ${String(this.currentLevelId).padStart(2, '0')} • ${lvlTheme.icon} ${lvlTheme.shortName.toUpperCase()}`;
+      }
+
+      const heartsEl = document.getElementById('hud-hearts-display');
+      if (heartsEl) {
+        let heartsStr = '';
+        for (let i = 0; i < 3; i++) {
+          heartsStr += i < this.lives ? '❤️' : '🖤';
+        }
+        heartsEl.textContent = heartsStr;
+      }
+
+      const coinsEl = document.getElementById('hud-coins-display-val') || document.getElementById('hud-coins-val');
+      if (coinsEl) {
+        coinsEl.textContent = `🪙 ${String(this.coinsCollected).padStart(2, '0')} / ${String(this.totalLevelCoins).padStart(2, '0')}`;
+      }
+    }
+
+    takeDamage(reason = 'hazard') {
+      if (this.state !== 'PLAYING') return;
+      if (!this.player || !this.player.isAlive) return;
+
+      this.lives = Math.max(0, this.lives - 1);
+      this.updateHUDStats();
+
+      if (this.lives > 0) {
+        sound.playPlayerHurt();
+        this.screenShake = 14;
+        this.damageFlashTimer = 0.35;
+        this.addExplosion(this.player.x, this.player.y, '#ff3344', 30);
+        this.addFloatingPopup(this.player.x, this.player.y - 25, '-1 LIFE', '#ff3344');
+
+        // Respawn player back at spawn, keeping collected coins intact!
+        this.player.x = this.currentLevel.spawn.x;
+        this.player.y = this.currentLevel.spawn.y;
+        this.player.vx = 0;
+        this.player.vy = 0;
+        this.player.isGrounded = false;
+        this.player.invulnerableTimer = 2.0;
+        this.player.state = 'idle';
+
+        // Camera recenter towards spawn
+        const leadOffset = this.canvas.width * 0.40;
+        const maxCamX = Math.max(0, this.currentLevel.width - this.canvas.width);
+        this.cameraX = Math.max(0, Math.min(maxCamX, this.player.x - leadOffset));
+      } else {
+        this.failLevel(reason);
+      }
+    }
+
     failLevel(reason = 'obstacle') {
       if (this.state !== 'PLAYING') return;
       this.state = 'FAILED';
       sound.stopBGM();
       sound.playPlayerDefeat();
-      this.addExplosion(this.player.x, this.player.y, '#00f0ff', 40);
+      this.addExplosion(this.player.x, this.player.y, '#ff3344', 45);
 
-      const totalAttempts = incrementLevelAttempt(this.currentLevelId);
-
-      document.getElementById('defeat-attempt-display').textContent = `Attempt ${String(totalAttempts - 1).padStart(2, '0')} Failed`;
-      document.getElementById('defeat-total-attempts').textContent = totalAttempts - 1;
+      const defeatAttemptTag = document.getElementById('defeat-attempt-display');
+      if (defeatAttemptTag) defeatAttemptTag.textContent = 'OUT OF LIVES';
+      const defeatLivesEl = document.getElementById('defeat-lives-display');
+      if (defeatLivesEl) defeatLivesEl.textContent = '🖤🖤🖤 (0/3)';
 
       setTimeout(() => {
         this.switchScreen('screen-level-failed');
@@ -3095,15 +3423,42 @@
       sound.playVictory();
       this.addVictoryConfetti(this.player.x, this.player.y);
 
-      const attemptsUsed = getLevelAttempt(this.currentLevelId);
-      const res = saveBestAttempt(this.currentLevelId, attemptsUsed);
+      // Save level completion and coins
+      if (!gameStateData.completedLevels.includes(this.currentLevelId)) {
+        gameStateData.completedLevels.push(this.currentLevelId);
+      }
+      if (!gameStateData.levelCoins) gameStateData.levelCoins = {};
+      const prevBestCoins = gameStateData.levelCoins[this.currentLevelId] || 0;
+      if (this.coinsCollected > prevBestCoins) {
+        gameStateData.levelCoins[this.currentLevelId] = this.coinsCollected;
+      }
+      let sumCoins = 0;
+      for (const id in gameStateData.levelCoins) {
+        sumCoins += gameStateData.levelCoins[id];
+      }
+      gameStateData.totalCoins = sumCoins;
+      persistData();
 
-      document.getElementById('complete-level-name').textContent = `LEVEL ${String(this.currentLevelId).padStart(2, '0')}: ${this.currentLevel.name}`;
-      document.getElementById('complete-attempts-val').textContent = attemptsUsed;
-      document.getElementById('complete-best-val').textContent = res.best;
+      // Update Victory Modal
+      const lvlNameEl = document.getElementById('complete-level-name');
+      if (lvlNameEl) lvlNameEl.textContent = `LEVEL ${String(this.currentLevelId).padStart(2, '0')}: ${this.currentLevel.name}`;
 
-      const newBestBadge = document.getElementById('complete-new-best-badge');
-      if (newBestBadge) newBestBadge.classList.toggle('hidden', !res.isNewBest);
+      const livesValEl = document.getElementById('complete-lives-val');
+      if (livesValEl) {
+        let heartsStr = '';
+        for (let i = 0; i < 3; i++) heartsStr += i < this.lives ? '❤️' : '🖤';
+        livesValEl.textContent = `${heartsStr} (${this.lives}/3)`;
+      }
+
+      const coinsValEl = document.getElementById('complete-coins-val');
+      if (coinsValEl) {
+        coinsValEl.textContent = `🪙 ${this.coinsCollected} / ${this.totalLevelCoins}`;
+      }
+
+      const allCoinsBadge = document.getElementById('complete-all-coins-badge');
+      if (allCoinsBadge) {
+        allCoinsBadge.classList.toggle('hidden', this.coinsCollected < this.totalLevelCoins || this.totalLevelCoins === 0);
+      }
 
       syncCurrentPlayerToLeaderboard();
       setTimeout(() => {
@@ -3113,19 +3468,195 @@
     }
 
     restartLevel(confirmed = false) {
-      if (confirmed && this.hasGameplayStarted) {
-        incrementLevelAttempt(this.currentLevelId);
-      }
       this.startLevel(this.currentLevelId);
     }
 
+    addFloatingPopup(x, y, text, color = '#ffd700') {
+      this.floatingPopups.push({
+        x, y, text, color, life: 0.85, maxLife: 0.85, vy: -35
+      });
+    }
+
+    updateFloatingPopups(dt) {
+      for (let i = this.floatingPopups.length - 1; i >= 0; i--) {
+        const fp = this.floatingPopups[i];
+        fp.life -= dt;
+        fp.y += fp.vy * dt;
+        if (fp.life <= 0) this.floatingPopups.splice(i, 1);
+      }
+    }
+
+    drawFloatingPopups() {
+      const ctx = this.ctx;
+      for (const fp of this.floatingPopups) {
+        const alpha = Math.max(0, fp.life / fp.maxLife);
+        ctx.save();
+        ctx.font = '700 13px "Chakra Petch", sans-serif';
+        ctx.fillStyle = fp.color;
+        ctx.globalAlpha = alpha;
+        ctx.textAlign = 'center';
+        ctx.shadowColor = fp.color;
+        ctx.shadowBlur = 8;
+        ctx.fillText(fp.text, Math.round(fp.x), Math.round(fp.y));
+        ctx.restore();
+      }
+    }
+
+    addCoinSparkles(x, y) {
+      for (let i = 0; i < 12; i++) {
+        const angle = (Math.PI * 2 / 12) * i + Math.random() * 0.3;
+        const spd = 40 + Math.random() * 60;
+        this.particles.push({
+          x, y,
+          vx: Math.cos(angle) * spd,
+          vy: Math.sin(angle) * spd,
+          color: i % 2 === 0 ? '#ffd700' : '#ffffff',
+          size: 2 + Math.random() * 2.5,
+          life: 0.45,
+          maxLife: 0.45
+        });
+      }
+    }
+
+    drawCoin(coin) {
+      const ctx = this.ctx;
+      const cx = coin.x;
+      const bobY = Math.sin(this.animTime * 4 + coin.x * 0.05) * 3;
+      const cy = coin.y + bobY;
+      const spin = Math.cos(this.animTime * 5 + coin.x * 0.08);
+      const absSpin = Math.max(0.18, Math.abs(spin));
+      const radius = 10;
+
+      ctx.save();
+      ctx.translate(Math.round(cx), Math.round(cy));
+
+      // Golden outer aura glow
+      const glowGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 16);
+      glowGrad.addColorStop(0, 'rgba(255, 230, 0, 0.45)');
+      glowGrad.addColorStop(0.6, 'rgba(255, 170, 0, 0.18)');
+      glowGrad.addColorStop(1, 'rgba(255, 170, 0, 0)');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 3D Spinning coin rim
+      ctx.save();
+      ctx.scale(spin, 1);
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fillStyle = spin > 0 ? '#ffb703' : '#fb8500';
+      ctx.fill();
+      ctx.strokeStyle = '#fff066';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Inner coin face
+      ctx.beginPath();
+      ctx.arc(0, 0, radius - 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd166';
+      ctx.fill();
+
+      // Star emblem
+      ctx.fillStyle = '#e07a00';
+      ctx.fillRect(-1.5, -4, 3, 8);
+      ctx.fillRect(-4, -1.5, 8, 3);
+
+      // Sparkle glint
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.beginPath();
+      ctx.arc(-radius * 0.35, -radius * 0.35, 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+      ctx.restore();
+    }
+
     // --- PHYSICS & COLLISIONS ---
+    updateControlsInput(dt) {
+      if (!this.player || !this.player.isAlive) return;
+      const p = this.player;
+
+      // Camera gesture active components (supports pure directions, diagonals & dual hands!)
+      const camLeft = isCameraActive && (rightConfirmedGesture === 'LEFT' || rightConfirmedGesture === 'UP_LEFT' || rightConfirmedGesture === 'DOWN_LEFT' || leftConfirmedGesture === 'LEFT');
+      const camRight = isCameraActive && (rightConfirmedGesture === 'RIGHT' || rightConfirmedGesture === 'UP_RIGHT' || rightConfirmedGesture === 'DOWN_RIGHT' || leftConfirmedGesture === 'RIGHT');
+      const camDown = isCameraActive && (rightConfirmedGesture === 'DOWN' || rightConfirmedGesture === 'DOWN_LEFT' || rightConfirmedGesture === 'DOWN_RIGHT' || leftConfirmedGesture === 'DOWN');
+      const camUp = isCameraActive && (rightConfirmedGesture === 'UP' || rightConfirmedGesture === 'UP_LEFT' || rightConfirmedGesture === 'UP_RIGHT' || leftConfirmedGesture === 'UP');
+
+      const leftPressed = activeKeys.has('KeyA') || activeKeys.has('ArrowLeft') || activeKeys.has('Numpad4') || activeKeys.has('a') || activeKeys.has('A') || activeKeys.has('arrowleft') || activeKeys.has('Left') || touchMoveDirection === 'LEFT' || camLeft;
+      const rightPressed = activeKeys.has('KeyD') || activeKeys.has('ArrowRight') || activeKeys.has('Numpad6') || activeKeys.has('d') || activeKeys.has('D') || activeKeys.has('arrowright') || activeKeys.has('Right') || touchMoveDirection === 'RIGHT' || camRight;
+      const downPressed = activeKeys.has('KeyS') || activeKeys.has('ArrowDown') || activeKeys.has('Numpad2') || activeKeys.has('s') || activeKeys.has('S') || activeKeys.has('arrowdown') || activeKeys.has('Down') || camDown;
+      const upPressed = activeKeys.has('KeyW') || activeKeys.has('ArrowUp') || activeKeys.has('Numpad8') || activeKeys.has('w') || activeKeys.has('W') || activeKeys.has('arrowup') || activeKeys.has('Up') || camUp;
+
+      if (leftPressed || rightPressed || downPressed || upPressed) {
+        this.hasGameplayStarted = true;
+      }
+
+      // Horizontal velocity calculation supporting simultaneous keys, camera gestures & direction rollover
+      if (leftPressed && rightPressed) {
+        if (lastHorizontalKey === 'LEFT') {
+          p.facing = -1;
+          p.vx = -PLAYER_SPEED;
+          if (p.isGrounded && p.state !== 'attack') {
+            p.state = 'walk';
+          }
+        } else if (lastHorizontalKey === 'RIGHT') {
+          p.facing = 1;
+          p.vx = PLAYER_SPEED;
+          if (p.isGrounded && p.state !== 'attack') {
+            p.state = 'walk';
+          }
+        } else {
+          p.vx = 0;
+          if (p.isGrounded && p.state !== 'attack') {
+            p.state = 'idle';
+          }
+        }
+      } else if (leftPressed) {
+        p.facing = -1;
+        p.vx = -PLAYER_SPEED;
+        if (p.isGrounded && p.state !== 'attack') {
+          p.state = 'walk';
+        }
+      } else if (rightPressed) {
+        p.facing = 1;
+        p.vx = PLAYER_SPEED;
+        if (p.isGrounded && p.state !== 'attack') {
+          p.state = 'walk';
+        }
+      } else {
+        // Neither left nor right is actively held
+        if (p.isGrounded) {
+          p.vx = 0;
+          if (p.state !== 'attack') {
+            p.state = 'idle';
+          }
+        }
+      }
+
+      // Down / Crouch / Fast descent
+      if (downPressed) {
+        p.vx *= 0.65;
+        if (!p.isGrounded) {
+          p.vy += 1.2;
+        }
+      }
+    }
+
     updatePhysics(dt) {
       if (!this.player || !this.player.isAlive || !this.currentLevel) return;
 
       const p = this.player;
+
+      // Update multi-key continuous keyboard/touch input
+      this.updateControlsInput(dt);
+
       p.vy += 1.28; // Turbo-speed ninja gravity (blazing fast jump takeoff & landing)
       if (p.vy > 18) p.vy = 18;
+
+      if (p.jumpBuffer > 0) {
+        p.jumpBuffer -= dt;
+      }
 
       // Horizontal
       p.x += p.vx;
@@ -3185,17 +3716,38 @@
         if (g.life <= 0) this.shadowGhosts.splice(i, 1);
       }
 
+      // Invulnerability countdown
+      if (p.invulnerableTimer > 0) {
+        p.invulnerableTimer -= dt;
+      }
+
       // Check Bottomless Pit
       if (p.y > this.currentLevel.height + 60) {
-        this.failLevel('pit');
+        this.takeDamage('pit');
         return;
       }
 
       // Check Hazards (Spikes & Lasers)
-      for (const haz of this.currentLevel.hazards) {
-        if (this.checkAABB(p, haz)) {
-          this.failLevel('hazard');
-          return;
+      if (p.invulnerableTimer <= 0) {
+        for (const haz of this.currentLevel.hazards) {
+          if (this.checkAABB(p, haz)) {
+            this.takeDamage('hazard');
+            return;
+          }
+        }
+      }
+
+      // Check Collectible Coins (Kept on life loss!)
+      if (this.currentLevel.coins) {
+        for (const coin of this.currentLevel.coins) {
+          if (!coin.collected && this.checkAABB(p, coin)) {
+            coin.collected = true;
+            this.coinsCollected++;
+            sound.playCoinPickup();
+            this.addFloatingPopup(coin.x, coin.y - 14, '+100', '#ffd700');
+            this.addCoinSparkles(coin.x, coin.y);
+            this.updateHUDStats();
+          }
         }
       }
 
@@ -3229,6 +3781,13 @@
             if (plat.isMoving) {
               p.x += plat.vx;
               p.y += plat.vy;
+            }
+            if (p.jumpBuffer > 0) {
+              p.jumpBuffer = 0;
+              p.vy = -JUMP_FORCE;
+              p.isGrounded = false;
+              sound.playJump();
+              this.addDustPuff(p.x, p.y + p.height / 2);
             }
           } else if (p.vy < 0) {
             p.y = plat.y + plat.height + halfH;
@@ -3293,8 +3852,8 @@
         }
 
         // 2. Enemy hit player
-        if (this.checkAABB(p, enemy)) {
-          this.failLevel('enemy');
+        if (p.invulnerableTimer <= 0 && this.checkAABB(p, enemy)) {
+          this.takeDamage('enemy');
           return;
         }
       }
@@ -3458,6 +4017,12 @@
             if (!tb.isDestroyed) this.drawTargetBlock(tb);
           }
         }
+        // Collectible Coins
+        if (this.currentLevel.coins) {
+          for (const coin of this.currentLevel.coins) {
+            if (!coin.collected) this.drawCoin(coin);
+          }
+        }
         // Shadow Fighter Ghost Afterimages
         if (this.shadowGhosts) {
           for (const g of this.shadowGhosts) {
@@ -3469,10 +4034,20 @@
         if (this.player && this.player.isAlive) this.drawPlayer(this.player);
         // Particles
         this.renderParticles();
+        // Floating Popups (+100, -1 LIFE)
+        this.drawFloatingPopups();
       }
 
       this.ctx.restore();
       this.ctx.restore();
+
+      // Screen Damage Vignette Flash when taking damage
+      if (this.damageFlashTimer > 0) {
+        this.ctx.save();
+        this.ctx.fillStyle = `rgba(255, 30, 60, ${Math.min(0.4, this.damageFlashTimer * 1.1)})`;
+        this.ctx.fillRect(0, 0, w, h);
+        this.ctx.restore();
+      }
     }
 
     drawTargetBlock(tb) {
@@ -5611,6 +6186,23 @@
       else if (p.state === 'jump') bobY = -2;
       else if (p.state === 'fall') bobY = 2;
 
+      // Invulnerability flicker & cyan force-shield bubble after taking damage
+      if (p.invulnerableTimer > 0) {
+        if (Math.floor(this.animTime * 16) % 2 === 0) {
+          ctx.globalAlpha = 0.45;
+        }
+        ctx.save();
+        const shieldPulse = Math.sin(this.animTime * 12) * 2;
+        ctx.strokeStyle = '#00f0ff';
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = '#00f0ff';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(0, bobY - 4, 25 + shieldPulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
       // 1. SHADOW AURA (Dark void mist pulsing subtly behind the silhouette)
       ctx.save();
       const auraPulse = Math.sin(this.animTime * 6) * 1.5;
@@ -5939,6 +6531,11 @@
         this.updateEntities(dt);
         this.updatePhysics(dt);
         this.updateParticles(dt);
+        this.updateFloatingPopups(dt);
+        if (this.damageFlashTimer > 0) {
+          this.damageFlashTimer -= dt;
+          if (this.damageFlashTimer < 0) this.damageFlashTimer = 0;
+        }
 
         // Camera follow
         if (this.player) {
@@ -6067,7 +6664,7 @@
 
       const isUnlocked = true; // All 20 levels unlocked!
       const isCompleted = gameStateData.completedLevels.includes(lvl.id);
-      const best = gameStateData.bestAttempts[lvl.id];
+      const lvlCoins = gameStateData.levelCoins ? gameStateData.levelCoins[lvl.id] : undefined;
 
       const card = document.createElement('div');
       card.className = `level-item-card ${isCompleted ? 'completed' : ''}`;
@@ -6080,7 +6677,7 @@
         </div>
         <strong class="item-name">${lvl.name}</strong>
         <span class="item-status">${isCompleted ? '✓ COMPLETE' : 'READY'}</span>
-        ${best ? `<span class="item-best">Best: ${best} Attempt${best > 1 ? 's' : ''}</span>` : ''}
+        ${lvlCoins !== undefined ? `<span class="item-best">🪙 Coins: ${lvlCoins}</span>` : ''}
       `;
 
       card.addEventListener('click', () => {
@@ -6260,13 +6857,51 @@
       masterAttackBtn.addEventListener('pointerdown', handler);
     }
 
-    // Touch Controls Fallback D-Pad
-    document.getElementById('btn-touch-left').addEventListener('pointerdown', () => movePlayer('LEFT'));
-    document.getElementById('btn-touch-left').addEventListener('pointerup', () => movePlayer('CENTER'));
-    document.getElementById('btn-touch-right').addEventListener('pointerdown', () => movePlayer('RIGHT'));
-    document.getElementById('btn-touch-right').addEventListener('pointerup', () => movePlayer('CENTER'));
-    document.getElementById('btn-touch-jump').addEventListener('click', () => movePlayer('UP'));
-    document.getElementById('btn-touch-attack').addEventListener('click', () => triggerAttack());
+    // Touch Controls Fallback D-Pad with Multi-Touch Support
+    const touchLeft = document.getElementById('btn-touch-left');
+    const touchRight = document.getElementById('btn-touch-right');
+    const touchJump = document.getElementById('btn-touch-jump');
+    const touchAttack = document.getElementById('btn-touch-attack');
+
+    if (touchLeft) {
+      touchLeft.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        touchMoveDirection = 'LEFT';
+      });
+      touchLeft.addEventListener('pointerup', () => {
+        if (touchMoveDirection === 'LEFT') touchMoveDirection = null;
+      });
+      touchLeft.addEventListener('pointercancel', () => {
+        if (touchMoveDirection === 'LEFT') touchMoveDirection = null;
+      });
+    }
+
+    if (touchRight) {
+      touchRight.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        touchMoveDirection = 'RIGHT';
+      });
+      touchRight.addEventListener('pointerup', () => {
+        if (touchMoveDirection === 'RIGHT') touchMoveDirection = null;
+      });
+      touchRight.addEventListener('pointercancel', () => {
+        if (touchMoveDirection === 'RIGHT') touchMoveDirection = null;
+      });
+    }
+
+    if (touchJump) {
+      touchJump.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        movePlayerUp();
+      });
+    }
+
+    if (touchAttack) {
+      touchAttack.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        triggerAttack();
+      });
+    }
 
     // HUD Actions
     document.getElementById('btn-toggle-camera').addEventListener('click', async () => {
@@ -6509,31 +7144,103 @@
       game.switchScreen('screen-main-menu');
     });
 
-    // Keyboard Shortcuts for Desktop Testing
+    // =========================================================================
+    // Multi-Key Simultaneous Keyboard Controls Engine
+    // Supports holding Run (A/D) + Jump (W/Up) + Attack (Space/J) simultaneously
+    // =========================================================================
+    function isKeyJump(k, code) {
+      return code === 'KeyW' || code === 'ArrowUp' || code === 'Numpad8' || k === 'w' || k === 'W' || k === 'ArrowUp' || k === 'Up';
+    }
+    function isKeyAttackAction(k, code) {
+      return code === 'Space' || code === 'KeyJ' || code === 'KeyK' || code === 'KeyZ' || code === 'KeyX' || code === 'KeyF' || code === 'KeyE' || code === 'Enter' || code === 'ShiftRight' || k === ' ' || k === 'j' || k === 'J' || k === 'z' || k === 'Z' || k === 'x' || k === 'X' || k === 'f' || k === 'F' || k === 'e' || k === 'E' || k === 'Enter';
+    }
+    function isKeyLeft(k, code) {
+      return code === 'KeyA' || code === 'ArrowLeft' || code === 'Numpad4' || k === 'a' || k === 'A' || k === 'ArrowLeft' || k === 'Left';
+    }
+    function isKeyRight(k, code) {
+      return code === 'KeyD' || code === 'ArrowRight' || code === 'Numpad6' || k === 'd' || k === 'D' || k === 'ArrowRight' || k === 'Right';
+    }
+
     window.addEventListener('keydown', (e) => {
+      // Don't intercept if user is typing into an input field (e.g. player name modal)
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+
+      // Pause shortcut
+      if (e.key === 'Escape' || e.code === 'KeyP') {
+        if (game.state === 'PLAYING') {
+          game.state = 'PAUSED';
+          sound.stopBGM();
+          game.switchScreen('modal-game-paused');
+          return;
+        }
+      }
+
       if (game.state !== 'PLAYING') return;
-      const key = e.key.toUpperCase();
-      if (key === 'A' || e.key === 'ArrowLeft') movePlayer('LEFT');
-      else if (key === 'D' || e.key === 'ArrowRight') movePlayer('RIGHT');
-      else if (key === 'W' || e.key === 'ArrowUp') movePlayer('UP');
-      else if (e.code === 'Space') {
+
+      const code = e.code || '';
+      const key = e.key || '';
+
+      // Register key in activeKeys Set for continuous multi-key physics update
+      if (code) activeKeys.add(code);
+      if (key) {
+        activeKeys.add(key.toLowerCase());
+        activeKeys.add(key);
+      }
+
+      // Track directional key priority for smooth rollover
+      if (isKeyLeft(key, code)) {
+        lastHorizontalKey = 'LEFT';
+      } else if (isKeyRight(key, code)) {
+        lastHorizontalKey = 'RIGHT';
+      }
+
+      // Jump Impulse (instant trigger on initial press, supports run + jump)
+      if (isKeyJump(key, code) && !e.repeat) {
+        movePlayerUp();
+      }
+
+      // Attack Trigger (instant trigger on initial press, supports run + attack)
+      if (isKeyAttackAction(key, code) && !e.repeat) {
         e.preventDefault();
         triggerAttack();
-      } else if (key === 'R') {
-        document.getElementById('modal-confirm-restart').classList.remove('hidden');
-      } else if (e.key === 'Escape') {
-        game.state = 'PAUSED';
-        sound.stopBGM();
-        game.switchScreen('modal-game-paused');
+      }
+
+      // Quick Restart Level
+      if ((code === 'KeyR' || key === 'r' || key === 'R') && !e.repeat) {
+        const restartModal = document.getElementById('modal-confirm-restart');
+        if (restartModal) restartModal.classList.remove('hidden');
+      }
+
+      // Prevent page scrolling on Space and Arrow keys
+      if (code === 'Space' || key === ' ' || code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight') {
+        e.preventDefault();
       }
     });
 
     window.addEventListener('keyup', (e) => {
-      if (game.state !== 'PLAYING') return;
-      const key = e.key.toUpperCase();
-      if (key === 'A' || key === 'D' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        movePlayer('CENTER');
+      const code = e.code || '';
+      const key = e.key || '';
+      if (code) activeKeys.delete(code);
+      if (key) {
+        activeKeys.delete(key.toLowerCase());
+        activeKeys.delete(key.toUpperCase());
+        activeKeys.delete(key);
       }
+
+      // Directional rollover update when a horizontal key is released
+      if (isKeyLeft(key, code)) {
+        const rightStillHeld = activeKeys.has('KeyD') || activeKeys.has('ArrowRight') || activeKeys.has('Numpad6') || activeKeys.has('d') || activeKeys.has('D') || activeKeys.has('Right');
+        lastHorizontalKey = rightStillHeld ? 'RIGHT' : null;
+      } else if (isKeyRight(key, code)) {
+        const leftStillHeld = activeKeys.has('KeyA') || activeKeys.has('ArrowLeft') || activeKeys.has('Numpad4') || activeKeys.has('a') || activeKeys.has('A') || activeKeys.has('Left');
+        lastHorizontalKey = leftStillHeld ? 'LEFT' : null;
+      }
+    });
+
+    window.addEventListener('blur', () => {
+      activeKeys.clear();
+      touchMoveDirection = null;
+      lastHorizontalKey = null;
     });
   }
 
