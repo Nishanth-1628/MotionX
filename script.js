@@ -1694,6 +1694,166 @@
   const MAX_LOST_FRAMES_TOLERANCE = 24;      // ~0.8s grace period before releasing hand lock
   const MAX_HAND_ASSOCIATION_DIST = 0.40;     // Maximum normalized Euclidean distance between consecutive frames
 
+  // =========================================================================
+  // TWO-HAND REGISTRATION SYSTEM
+  // Phase 1 (SCANNING): Wait until exactly 2 genuine hands are visible
+  // Phase 2 (LOCKING):  Hold steady for CALIB_HOLD_FRAMES frames → register
+  // Phase 3 (REGISTERED): Only these 2 hand positions (±CALIB_RADIUS) are accepted
+  // =========================================================================
+  const CALIB_HOLD_FRAMES = 45;   // ~1.5s at 30fps — must hold both hands steady
+  const CALIB_RADIUS = 0.55;      // Normalized radius: hand accepted if within this of registered centroid
+  const CALIB_REACQUIRE_RADIUS = 0.70; // Wider reacquire zone after hand briefly disappears
+
+  // 'idle' | 'scanning' | 'locking' | 'registered'
+  let handCalibState = 'idle';
+  let calibLockFrames = 0;          // consecutive frames both hands seen
+  // Registered centroids (screen-space normalized 0-1)
+  let registeredHand1 = null;       // { x, y } — first registered hand centroid
+  let registeredHand2 = null;       // { x, y } — second registered hand centroid
+
+  function resetHandCalibration() {
+    handCalibState = 'idle';
+    calibLockFrames = 0;
+    registeredHand1 = null;
+    registeredHand2 = null;
+    _updateCalibUI();
+  }
+
+  /** Returns true if a candidate centroid matches one of the two registered hands */
+  function isRegisteredHand(cx, cy) {
+    if (handCalibState !== 'registered') return true; // allow all during calibration
+    if (!registeredHand1 || !registeredHand2) return true;
+    const d1 = Math.hypot(cx - registeredHand1.x, cy - registeredHand1.y);
+    const d2 = Math.hypot(cx - registeredHand2.x, cy - registeredHand2.y);
+    return d1 <= CALIB_REACQUIRE_RADIUS || d2 <= CALIB_REACQUIRE_RADIUS;
+  }
+
+  /** Updates the registered centroid positions after each accepted frame */
+  function updateRegisteredCentroids(c1x, c1y, c2x, c2y) {
+    if (handCalibState !== 'registered') return;
+    // Gentle EMA update so registered positions can slowly follow real hands
+    const alpha = 0.04;
+    registeredHand1.x += alpha * (c1x - registeredHand1.x);
+    registeredHand1.y += alpha * (c1y - registeredHand1.y);
+    registeredHand2.x += alpha * (c2x - registeredHand2.x);
+    registeredHand2.y += alpha * (c2y - registeredHand2.y);
+  }
+
+  // DOM element for calibration overlay (created dynamically)
+  let _calibOverlay = null;
+  let _calibMsg = null;
+  let _calibBar = null;
+  let _calibBarFill = null;
+
+  function _ensureCalibOverlay() {
+    if (_calibOverlay) return;
+    _calibOverlay = document.createElement('div');
+    _calibOverlay.id = 'hand-calib-overlay';
+    Object.assign(_calibOverlay.style, {
+      position:'absolute', inset:'0', zIndex:'9999',
+      display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+      background:'rgba(0,0,0,0.78)', backdropFilter:'blur(4px)',
+      fontFamily:"'Chakra Petch','Rajdhani',sans-serif", color:'#fff',
+      gap:'18px', transition:'opacity 0.4s', opacity:'0', pointerEvents:'none'
+    });
+    // Icon row
+    const icons = document.createElement('div');
+    icons.style.cssText = 'font-size:52px;letter-spacing:24px;filter:drop-shadow(0 0 12px #00eaff88)';
+    icons.textContent = '🤚  🤚';
+    // Message
+    _calibMsg = document.createElement('div');
+    Object.assign(_calibMsg.style, {
+      fontSize:'18px', fontWeight:'700', letterSpacing:'3px',
+      textAlign:'center', textShadow:'0 0 10px #00eaff', textTransform:'uppercase', maxWidth:'340px'
+    });
+    _calibMsg.textContent = 'SHOW BOTH HANDS TO CAMERA';
+    // Progress bar container
+    _calibBar = document.createElement('div');
+    Object.assign(_calibBar.style, {
+      width:'260px', height:'8px', background:'#ffffff22',
+      borderRadius:'6px', overflow:'hidden', border:'1px solid #00eaff44'
+    });
+    _calibBarFill = document.createElement('div');
+    Object.assign(_calibBarFill.style, {
+      height:'100%', width:'0%',
+      background:'linear-gradient(90deg,#00eaff,#0088ff)',
+      borderRadius:'6px', transition:'width 0.1s'
+    });
+    _calibBar.appendChild(_calibBarFill);
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:12px;color:#ffffff66;letter-spacing:2px;text-align:center';
+    hint.textContent = 'HOLD STILL — REGISTERING YOUR HANDS';
+    _calibOverlay.append(icons, _calibMsg, _calibBar, hint);
+    // Attach to camera preview container or game-app root
+    const parent = document.getElementById('game-area-container') ||
+                   document.getElementById('camera-panel') ||
+                   document.getElementById('game-app') ||
+                   document.body;
+    parent.appendChild(_calibOverlay);
+  }
+
+  function _updateCalibUI() {
+    _ensureCalibOverlay();
+    if (handCalibState === 'idle') {
+      _calibOverlay.style.opacity = '0';
+      _calibOverlay.style.pointerEvents = 'none';
+    } else if (handCalibState === 'scanning') {
+      _calibOverlay.style.opacity = '1';
+      _calibOverlay.style.pointerEvents = 'all';
+      if (_calibMsg) _calibMsg.textContent = 'SHOW BOTH HANDS TO CAMERA';
+      if (_calibMsg) _calibMsg.style.color = '#ffffff';
+      if (_calibBarFill) _calibBarFill.style.width = '0%';
+    } else if (handCalibState === 'locking') {
+      _calibOverlay.style.opacity = '1';
+      _calibOverlay.style.pointerEvents = 'all';
+      if (_calibMsg) { _calibMsg.textContent = 'HOLD STEADY…'; _calibMsg.style.color = '#00eaff'; }
+      const pct = Math.round((calibLockFrames / CALIB_HOLD_FRAMES) * 100);
+      if (_calibBarFill) _calibBarFill.style.width = pct + '%';
+    } else if (handCalibState === 'registered') {
+      if (_calibMsg) { _calibMsg.textContent = '✅ HANDS REGISTERED!'; _calibMsg.style.color = '#00ff88'; }
+      if (_calibBarFill) _calibBarFill.style.width = '100%';
+      _calibBarFill.style.background = 'linear-gradient(90deg,#00ff88,#00eaff)';
+      setTimeout(() => {
+        if (_calibOverlay) { _calibOverlay.style.opacity = '0'; _calibOverlay.style.pointerEvents = 'none'; }
+      }, 1200);
+    }
+  }
+
+  /** Called each frame from handleMediaPipeResults with raw genuine candidates */
+  function processHandCalibration(rawCandidates, isMirror) {
+    if (handCalibState === 'registered') return; // already done
+    if (handCalibState === 'idle') {
+      handCalibState = 'scanning';
+      calibLockFrames = 0;
+      _updateCalibUI();
+    }
+
+    const twoSeen = rawCandidates.length >= 2;
+    if (!twoSeen) {
+      // Reset lock counter when fewer than 2 hands visible
+      if (calibLockFrames > 0) { calibLockFrames = 0; _updateCalibUI(); }
+      if (handCalibState !== 'scanning') { handCalibState = 'scanning'; _updateCalibUI(); }
+      return;
+    }
+
+    // 2+ hands visible → enter/stay in locking phase
+    if (handCalibState !== 'locking') {
+      handCalibState = 'locking';
+    }
+    calibLockFrames++;
+    _updateCalibUI();
+
+    if (calibLockFrames >= CALIB_HOLD_FRAMES) {
+      // Register the two most prominent hands
+      const sorted = rawCandidates.slice().sort((a,b) => b.palmSize - a.palmSize);
+      const h1 = sorted[0], h2 = sorted[1];
+      registeredHand1 = { x: h1.screenX, y: h1.screenY };
+      registeredHand2 = { x: h2.screenX, y: h2.screenY };
+      handCalibState = 'registered';
+      _updateCalibUI();
+    }
+  }
+
   let leftFistHeld = false;         // Fist hold guard on left hand: triggers 1 punch per fist
   let lastLeftAttackTime = 0;       // 500ms cooldown timer
   let rightFistHeld = false;        // Backward-compatibility alias
@@ -1862,6 +2022,7 @@
     previousRightSmoothedLandmarks = null;
     previousSmoothedLandmarks = null;
     handLockTracker.reset();
+    resetHandCalibration();
     stopPlayer();
     updateTwoHandUIFeedback();
     if (hudCamPill) hudCamPill.textContent = 'CAMERA OFF';
@@ -2945,6 +3106,10 @@
     const isMirror = gameStateData.settings.mirrorCamera !== false;
 
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+      // During calibration: report 0 hands
+      if (handCalibState !== 'registered') {
+        processHandCalibration([], isMirror);
+      }
       classifyTwoHands([], [], isMirror);
       detectedHandsCount = 0;
       leftHandDetected = false;
@@ -2955,7 +3120,6 @@
       previousLeftSmoothedLandmarks = null;
       previousRightSmoothedLandmarks = null;
       previousSmoothedLandmarks = null;
-
       if (overlayCtx && overlayCanvas) {
         overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
       }
@@ -2964,11 +3128,54 @@
       return;
     }
 
-    const { leftHand, rightHand } = classifyTwoHands(
-      results.multiHandLandmarks,
-      results.multiHandedness,
-      isMirror
-    );
+    // ── STEP 1: Build raw genuine-hand candidates (same logic as classifyTwoHands Step 1) ──
+    const _rawCandidatesForCalib = [];
+    for (let _ci = 0; _ci < results.multiHandLandmarks.length; _ci++) {
+      const _lm = results.multiHandLandmarks[_ci];
+      if (!_lm || _lm.length < 21) continue;
+      const _hInfo = (results.multiHandedness && results.multiHandedness[_ci]) ? results.multiHandedness[_ci] : null;
+      if (!isGenuineHandLandmarks(_lm, _hInfo)) continue;
+      const _wrist = _lm[0], _mcp = _lm[9];
+      const _rawCx = (_wrist.x + _mcp.x) / 2;
+      const _rawCy = (_wrist.y + _mcp.y) / 2;
+      const _screenX = isMirror ? (1 - _rawCx) : _rawCx;
+      const _palmSize = Math.hypot(_mcp.x - _wrist.x, _mcp.y - _wrist.y);
+      _rawCandidatesForCalib.push({ screenX: _screenX, screenY: _rawCy, palmSize: _palmSize, lm: _lm, hInfo: _hInfo });
+    }
+
+    // ── STEP 2: Run calibration state machine ──
+    if (handCalibState !== 'registered') {
+      processHandCalibration(_rawCandidatesForCalib, isMirror);
+      // While still calibrating: block all game input, show only calibration UI
+      handleTwoHandGestures('NONE', 'NONE');
+      updateTwoHandUIFeedback();
+      return;
+    }
+
+    // ── STEP 3: REGISTERED phase — FILTER OUT any hand that is NOT one of the 2 registered hands ──
+    const _allowedLandmarks = [], _allowedHandedness = [];
+    let _accX1 = null, _accY1 = null, _accX2 = null, _accY2 = null, _accCount = 0;
+    for (let _ci = 0; _ci < _rawCandidatesForCalib.length; _ci++) {
+      const _cand = _rawCandidatesForCalib[_ci];
+      if (!isRegisteredHand(_cand.screenX, _cand.screenY)) continue; // ← BLOCKED: 3rd-party hand
+      // Map back to original multiHandLandmarks index
+      const _origIdx = results.multiHandLandmarks.indexOf(_cand.lm);
+      _allowedLandmarks.push(_origIdx >= 0 ? results.multiHandLandmarks[_origIdx] : _cand.lm);
+      _allowedHandedness.push(_origIdx >= 0 && results.multiHandedness ? results.multiHandedness[_origIdx] : _cand.hInfo);
+      if (_accCount === 0) { _accX1 = _cand.screenX; _accY1 = _cand.screenY; }
+      else { _accX2 = _cand.screenX; _accY2 = _cand.screenY; }
+      _accCount++;
+      if (_accCount >= 2) break;
+    }
+
+    // Slowly drift registered centroids toward accepted hands (so they can move naturally)
+    if (_accCount >= 2) updateRegisteredCentroids(_accX1, _accY1, _accX2, _accY2);
+
+    // Use filtered landmark list for the rest of the pipeline
+    const _effectiveLandmarks = _allowedLandmarks.length > 0 ? _allowedLandmarks : [];
+    const _effectiveHandedness = _allowedHandedness.length > 0 ? _allowedHandedness : [];
+
+    const { leftHand, rightHand } = classifyTwoHands(_effectiveLandmarks, _effectiveHandedness, isMirror);
 
     detectedHandsCount = Math.min(2, (leftHand ? 1 : 0) + (rightHand ? 1 : 0));
     handDetected = detectedHandsCount > 0;
@@ -2982,7 +3189,6 @@
       previousLeftSmoothedLandmarks = null;
       previousRightSmoothedLandmarks = null;
       previousSmoothedLandmarks = null;
-
       if (overlayCtx && overlayCanvas) {
         overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
       }
