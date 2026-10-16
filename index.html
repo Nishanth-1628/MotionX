@@ -241,7 +241,7 @@
           </button>
           <button id="btn-menu-level-select" class="cyber-btn cyber-btn-secondary">
             <span class="btn-icon">🗺️</span>
-            <span>LEVEL SELECT (20 LEVELS)</span>
+            <span>LEVEL SELECT (10 LEVELS)</span>
           </button>
           <button id="btn-menu-leaderboard" class="cyber-btn cyber-btn-secondary">
             <span class="btn-icon">🏆</span>
@@ -306,22 +306,22 @@
       <div class="modal-card wide-card">
         <div class="card-top-row">
           <div>
-            <h2 class="modal-title">MISSION ARCHIVE (20 LEVELS)</h2>
-            <div id="level-select-progress" class="level-select-progress">PROGRESS: 0/20 CLEARED • UNLOCKED: LEVEL 01</div>
+            <h2 class="modal-title">MISSION ARCHIVE (10 LEVELS)</h2>
+            <div id="level-select-progress" class="level-select-progress">PROGRESS: 0/10 CLEARED • UNLOCKED: LEVEL 01</div>
           </div>
           <div class="world-tab-group" id="world-tab-group">
-            <button class="world-btn active" data-world="1">🏙️ CITY</button>
-            <button class="world-btn" data-world="2">🌲 NATURE</button>
-            <button class="world-btn" data-world="3">🌋 FOUNDRY</button>
-            <button class="world-btn" data-world="4">🌌 CYBER</button>
-            <button class="world-btn" data-world="5">🏛️ RUINS</button>
+            <button class="world-btn active" data-world="1">🏙️ CH 1: CITY</button>
+            <button class="world-btn" data-world="2">🌲 CH 2: NATURE</button>
+            <button class="world-btn" data-world="3">🌋 CH 3: FOUNDRY</button>
+            <button class="world-btn" data-world="4">🌌 CH 4: CYBER</button>
+            <button class="world-btn" data-world="5">🏛️ CH 5: RUINS</button>
           </div>
         </div>
 
         <div id="level-select-notice" class="level-select-toast hidden"></div>
 
         <div class="level-cards-scroll" id="level-cards-scroll">
-          <!-- 20 Level Cards Injected Dynamically -->
+          <!-- 10 Level Cards Injected Dynamically (2 per chapter) -->
         </div>
 
         <div class="modal-btn-row">
@@ -381,7 +381,8 @@
 
         <div class="modal-btn-stack">
           <button id="btn-failed-retry" class="cyber-btn cyber-btn-primary">RETRY (3 LIVES)</button>
-          <button id="btn-failed-level-select" class="cyber-btn cyber-btn-secondary">LEVEL SELECT</button>
+          <button id="btn-failed-leaderboard" class="cyber-btn cyber-btn-secondary">🏆 LEADERBOARD</button>
+          <button id="btn-failed-level-select" class="cyber-btn cyber-btn-ghost">LEVEL SELECT</button>
         </div>
       </div>
     </div>
@@ -523,7 +524,7 @@
           <div class="setting-row danger-row">
             <div class="setting-meta">
               <strong>RESET PROGRESS</strong>
-              <small>Lock levels 2-20, clear cleared missions, and reset coins</small>
+              <small>Lock levels 2-10, clear cleared missions, and reset coins</small>
             </div>
             <button id="btn-reset-records" class="btn-danger-outline">RESET SAVE</button>
           </div>
@@ -613,7 +614,7 @@
       <div class="modal-card wide-card leaderboard-card">
         <div class="leaderboard-header-row">
           <div class="leaderboard-title-group">
-            <div class="brand-tag">GLOBAL RANKINGS</div>
+            <div class="brand-tag">⚡ REAL-TIME SYNCED RANKINGS</div>
             <h2 class="modal-title leaderboard-title">🏆 HALL OF FAME</h2>
           </div>
           <button id="btn-leaderboard-change-name" class="cyber-btn-sm cyber-btn-secondary" type="button">
@@ -633,7 +634,7 @@
           </div>
           <div class="lb-stat-box">
             <span class="lb-stat-label">CLEARED</span>
-            <span class="lb-stat-val" id="lb-your-cleared">0 / 20</span>
+            <span class="lb-stat-val" id="lb-your-cleared">0 / 10</span>
           </div>
         </div>
 
