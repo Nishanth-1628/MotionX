@@ -25,19 +25,19 @@
     sfx: true
   };
 
-  const STORAGE_KEY_LEADERBOARD = 'motionx_leaderboard_v1';
+  const STORAGE_KEY_LEADERBOARD = 'motionx_leaderboard_v2';
 
   const DEFAULT_LEADERBOARD = [
-    { name: 'CYBER_NEXUS', score: 25000, levels: 20, coins: 200 },
-    { name: 'NEO_RUNNER', score: 19800, levels: 18, coins: 160 },
-    { name: 'SYNTH_BLADE', score: 14500, levels: 14, coins: 130 },
-    { name: 'PHANTOM_99', score: 10200, levels: 10, coins: 90 },
-    { name: 'GLITCH_FOX', score: 6800, levels: 7, coins: 65 },
-    { name: 'BYTE_STRIKER', score: 3200, levels: 3, coins: 25 }
+    { name: 'CYBER_NEXUS', score: 14500, levels: 10, coins: 95 },
+    { name: 'NEO_RUNNER', score: 11200, levels: 8, coins: 72 },
+    { name: 'SYNTH_BLADE', score: 8500, levels: 6, coins: 55 },
+    { name: 'PHANTOM_99', score: 5500, levels: 4, coins: 35 },
+    { name: 'GLITCH_FOX', score: 3200, levels: 2, coins: 22 },
+    { name: 'BYTE_STRIKER', score: 1200, levels: 1, coins: 8 }
   ];
 
   let gameStateData = {
-    playerName: '',
+    playerName: 'SHADOW',
     unlockedLevel: 1,
     lastPlayedLevel: 1,
     completedLevels: [],
@@ -55,20 +55,20 @@
       if (raw) {
         const parsed = JSON.parse(raw);
         const completedLevels = Array.isArray(parsed.completedLevels)
-          ? parsed.completedLevels.filter(n => typeof n === 'number' && n >= 1 && n <= 20)
+          ? parsed.completedLevels.filter(n => typeof n === 'number' && n >= 1 && n <= 10)
           : [];
         const maxCompleted = completedLevels.length > 0 ? Math.max(...completedLevels) : 0;
 
         let unlockedLevel = 1;
         if (parsed.allUnlockedByCheat === true) {
-          unlockedLevel = 20;
+          unlockedLevel = 10;
         } else if (typeof parsed.unlockedLevel === 'number') {
           // Progression guard: enforce unlocking level-by-level as completed
-          // Clamps to maxCompleted + 1, clearing any previous hardcoded 20
+          // Clamps to maxCompleted + 1, clearing any previous hardcoded values
           const target = Math.max(1, maxCompleted + 1);
-          unlockedLevel = Math.min(20, Math.min(parsed.unlockedLevel, target));
+          unlockedLevel = Math.min(10, Math.min(parsed.unlockedLevel, target));
         } else {
-          unlockedLevel = Math.max(1, Math.min(20, maxCompleted + 1));
+          unlockedLevel = Math.max(1, Math.min(10, maxCompleted + 1));
         }
 
         let lastPlayedLevel = parsed.lastPlayedLevel || 1;
@@ -77,7 +77,7 @@
         }
 
         gameStateData = {
-          playerName: parsed.playerName || 'SHADOW',
+          playerName: (parsed.playerName || 'SHADOW').trim().toUpperCase(),
           unlockedLevel: unlockedLevel,
           lastPlayedLevel: lastPlayedLevel,
           completedLevels: completedLevels,
@@ -89,11 +89,14 @@
           settings: { ...defaultSettings, ...(parsed.settings || {}) }
         };
       } else {
+        gameStateData.playerName = 'SHADOW';
         gameStateData.unlockedLevel = 1;
         gameStateData.lastPlayedLevel = 1;
         gameStateData.completedLevels = [];
       }
       persistData();
+      syncCurrentPlayerToLeaderboard();
+      updatePlayerNameUI();
     } catch (e) {
       console.warn('Could not read save data:', e);
     }
@@ -110,10 +113,36 @@
   // --- LEADERBOARD & PLAYER NAME ENGINE ---
   function getLeaderboardData() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY_LEADERBOARD);
-      if (raw) {
+      let raw = localStorage.getItem(STORAGE_KEY_LEADERBOARD);
+      if (!raw) {
+        // Fallback migration from v1 if v2 does not exist yet
+        const v1 = localStorage.getItem('motionx_leaderboard_v1');
+        if (v1) {
+          const parsedV1 = JSON.parse(v1);
+          if (Array.isArray(parsedV1)) {
+            const botNames = ['CYBER_NEXUS', 'NEO_RUNNER', 'SYNTH_BLADE', 'PHANTOM_99', 'GLITCH_FOX', 'BYTE_STRIKER'];
+            const userEntries = parsedV1
+              .filter(e => e && e.name && !botNames.includes(e.name.toUpperCase()))
+              .map(e => ({
+                name: e.name.trim().toUpperCase(),
+                score: Math.min(16000, e.score || 0),
+                levels: Math.min(10, e.levels || 0),
+                coins: Math.min(150, e.coins || 0)
+              }));
+            const combined = [...JSON.parse(JSON.stringify(DEFAULT_LEADERBOARD)), ...userEntries];
+            combined.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || ((b.coins || 0) - (a.coins || 0)));
+            saveLeaderboardData(combined);
+            return combined;
+          }
+        }
+      } else {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(e => ({
+            ...e,
+            levels: Math.min(10, e.levels || 0)
+          }));
+        }
       }
     } catch (e) {
       console.warn('Could not load leaderboard:', e);
@@ -130,31 +159,50 @@
   }
 
   function calculatePlayerScore() {
-    const completedCount = (gameStateData.completedLevels || []).length;
-    const coins = gameStateData.totalCoins || 0;
+    const completedCount = Math.min(10, (gameStateData.completedLevels || []).length);
+    let coins = gameStateData.totalCoins || 0;
+    // Real-time addition: active collected coins during gameplay
+    if (currentGameInstance && (currentGameInstance.state === 'PLAYING' || currentGameInstance.state === 'PAUSED')) {
+      const curLvl = currentGameInstance.currentLevelId;
+      const prevLvlCoins = (gameStateData.levelCoins && gameStateData.levelCoins[curLvl]) || 0;
+      const curCollected = currentGameInstance.coinsCollected || 0;
+      if (curCollected > prevLvlCoins) {
+        coins += (curCollected - prevLvlCoins);
+      }
+    }
     const levelScore = completedCount * 1000;
     const coinBonus = coins * 100;
-    return levelScore + coinBonus;
+    const bossBonus = (gameStateData.completedLevels || []).includes(10) ? 2500 : 0;
+    return levelScore + coinBonus + bossBonus;
   }
 
   function syncCurrentPlayerToLeaderboard() {
-    const name = (gameStateData.playerName || '').trim();
+    const name = (gameStateData.playerName || 'SHADOW').trim().toUpperCase();
     if (!name) return;
     const score = calculatePlayerScore();
-    const levels = (gameStateData.completedLevels || []).length;
-    const coins = gameStateData.totalCoins || 0;
+    const levels = Math.min(10, (gameStateData.completedLevels || []).length);
+    let coins = gameStateData.totalCoins || 0;
 
     const list = getLeaderboardData();
-    const idx = list.findIndex(e => (e.name || '').trim().toLowerCase() === name.toLowerCase());
+    const idx = list.findIndex(e => (e.name || '').trim().toUpperCase() === name);
+
+    const prevScore = idx >= 0 ? (list[idx].score || 0) : 0;
+    const prevLevels = idx >= 0 ? (list[idx].levels || 0) : 0;
+    const prevCoins = idx >= 0 ? (list[idx].coins || 0) : 0;
+
+    const finalScore = Math.max(prevScore, score);
+    const finalLevels = Math.min(10, Math.max(prevLevels, levels));
+    const finalCoins = Math.max(prevCoins, coins);
+
     const entry = {
       name: name,
-      score: score,
-      levels: levels,
-      coins: coins
+      score: finalScore,
+      levels: finalLevels,
+      coins: finalCoins
     };
 
     if (idx >= 0) {
-      list[idx] = { ...list[idx], ...entry };
+      list[idx] = entry;
     } else {
       list.push(entry);
     }
@@ -163,11 +211,36 @@
     saveLeaderboardData(list);
   }
 
+  function renamePlayerOnLeaderboard(oldName, newName) {
+    if (!oldName || !newName || oldName.trim().toUpperCase() === newName.trim().toUpperCase()) return;
+    const list = getLeaderboardData();
+    const oldClean = oldName.trim().toUpperCase();
+    const newClean = newName.trim().toUpperCase();
+
+    const oldIdx = list.findIndex(e => (e.name || '').trim().toUpperCase() === oldClean);
+    const newIdx = list.findIndex(e => (e.name || '').trim().toUpperCase() === newClean);
+
+    if (oldIdx >= 0 && newIdx >= 0 && oldIdx !== newIdx) {
+      list[newIdx].score = Math.max(list[newIdx].score || 0, list[oldIdx].score || 0);
+      list[newIdx].levels = Math.max(list[newIdx].levels || 0, list[oldIdx].levels || 0);
+      list[newIdx].coins = Math.max(list[newIdx].coins || 0, list[oldIdx].coins || 0);
+      list.splice(oldIdx, 1);
+    } else if (oldIdx >= 0) {
+      list[oldIdx].name = newClean;
+    }
+    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || ((b.coins || 0) - (a.coins || 0)));
+    saveLeaderboardData(list);
+  }
+
   function checkPlayerNameExisted(name) {
     if (!name || !name.trim()) return false;
-    const clean = name.trim().toLowerCase();
-    const list = getLeaderboardData();
-    return list.some(entry => (entry.name || '').trim().toLowerCase() === clean);
+    const clean = name.trim().toUpperCase();
+    const currentClean = (gameStateData.playerName || '').trim().toUpperCase();
+    // If it's the current player's own active name, it's completely valid!
+    if (currentClean && clean === currentClean) return false;
+    // Check if name is reserved for default AI champions
+    const isBot = DEFAULT_LEADERBOARD.some(b => (b.name || '').trim().toUpperCase() === clean);
+    return isBot;
   }
 
   let pendingPlayerNameCallback = null;
@@ -178,11 +251,14 @@
     const input = document.getElementById('input-player-name');
     const errBox = document.getElementById('player-name-error');
     if (modal && input) {
-      input.value = gameStateData.playerName || '';
+      input.value = gameStateData.playerName || 'SHADOW';
       if (errBox) errBox.classList.add('hidden');
       input.classList.remove('has-error');
       modal.classList.remove('hidden');
-      setTimeout(() => input.focus(), 60);
+      setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 60);
     }
   }
 
@@ -196,11 +272,11 @@
     const input = document.getElementById('input-player-name');
     const errBox = document.getElementById('player-name-error');
     if (!input) return;
-    const val = input.value.trim();
+    const val = input.value.trim().toUpperCase();
 
     if (!val) {
       if (errBox) {
-        errBox.textContent = 'Please enter a player name';
+        errBox.textContent = 'Please enter a player callsign';
         errBox.classList.remove('hidden');
       }
       input.classList.add('has-error');
@@ -208,10 +284,19 @@
       return;
     }
 
-    // Name uniqueness validation: if name already entered, show "name is existed"
+    if (val.length < 2) {
+      if (errBox) {
+        errBox.textContent = 'Callsign must be at least 2 characters';
+        errBox.classList.remove('hidden');
+      }
+      input.classList.add('has-error');
+      input.focus();
+      return;
+    }
+
     if (checkPlayerNameExisted(val)) {
       if (errBox) {
-        errBox.textContent = 'name is existed';
+        errBox.textContent = 'Name is reserved for AI champion';
         errBox.classList.remove('hidden');
       }
       input.classList.add('has-error');
@@ -219,9 +304,14 @@
       return;
     }
 
-    // Valid unique name
+    // Valid unique callsign: persist and rename existing leaderboard entry
+    const oldName = gameStateData.playerName;
     gameStateData.playerName = val;
     persistData();
+
+    if (oldName && oldName !== val) {
+      renamePlayerOnLeaderboard(oldName, val);
+    }
     syncCurrentPlayerToLeaderboard();
     updatePlayerNameUI();
     closePlayerNameModal();
@@ -254,10 +344,10 @@
     const list = getLeaderboardData();
     list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || ((b.coins || 0) - (a.coins || 0)));
 
-    const currentName = (gameStateData.playerName || '').trim().toLowerCase();
+    const currentName = (gameStateData.playerName || 'SHADOW').trim().toUpperCase();
     let currentRank = '-';
     let currentScore = calculatePlayerScore();
-    let currentLevels = (gameStateData.completedLevels || []).length;
+    let currentLevels = Math.min(10, (gameStateData.completedLevels || []).length);
 
     const container = document.getElementById('leaderboard-list-container');
     if (!container) return;
@@ -266,11 +356,12 @@
 
     list.forEach((entry, idx) => {
       const rankNum = idx + 1;
-      const isYou = currentName && (entry.name || '').trim().toLowerCase() === currentName;
+      const entryName = (entry.name || '').trim().toUpperCase();
+      const isYou = currentName && entryName === currentName;
       if (isYou) {
         currentRank = `#${rankNum}`;
-        currentScore = entry.score;
-        currentLevels = entry.levels;
+        currentScore = Math.max(currentScore, entry.score || 0);
+        currentLevels = Math.min(10, Math.max(currentLevels, entry.levels || 0));
       }
 
       const row = document.createElement('div');
@@ -295,7 +386,7 @@
           <span>${escapeHTML(entry.name)}</span>
           ${isYou ? '<span class="badge-you">YOU</span>' : ''}
         </div>
-        <span class="col-levels">${entry.levels || 0} / 20</span>
+        <span class="col-levels">${Math.min(10, entry.levels || 0)} / 10</span>
         <span class="col-score">${(entry.score || 0).toLocaleString()} PTS</span>
       `;
 
@@ -309,8 +400,8 @@
 
     if (rankEl) rankEl.textContent = currentRank;
     if (scoreEl) scoreEl.textContent = currentScore.toLocaleString();
-    if (clearedEl) clearedEl.textContent = `${currentLevels} / 20`;
-    if (tagEl) tagEl.textContent = `CALLSIGN: ${gameStateData.playerName ? gameStateData.playerName.toUpperCase() : 'GUEST'}`;
+    if (clearedEl) clearedEl.textContent = `${currentLevels} / 10`;
+    if (tagEl) tagEl.textContent = `CALLSIGN: ${currentName}`;
   }
 
   function getLevelAttempt(levelId) {
@@ -337,10 +428,10 @@
     }
     // Unlock next level (levels unlock one by one as they are completed)
     const nextLevelId = levelId + 1;
-    if (nextLevelId <= 20 && nextLevelId > (gameStateData.unlockedLevel || 1)) {
+    if (nextLevelId <= 10 && nextLevelId > (gameStateData.unlockedLevel || 1)) {
       gameStateData.unlockedLevel = nextLevelId;
     }
-    gameStateData.lastPlayedLevel = Math.min(20, nextLevelId <= 20 ? nextLevelId : levelId);
+    gameStateData.lastPlayedLevel = Math.min(10, nextLevelId <= 10 ? nextLevelId : levelId);
     if (!gameStateData.completedLevels.includes(levelId)) {
       gameStateData.completedLevels.push(levelId);
     }
@@ -741,7 +832,7 @@
   const sound = new SoundEngine();
 
   // =========================================================================
-  // 3. 20 HANDCRAFTED PLAYABLE LEVELS ACROSS 5 THEMES
+  // 3. 10 HANDCRAFTED PLAYABLE LEVELS (2 PER CHAPTER)
   // =========================================================================
   const LEVELS = [
     // World 1: Digital Night City (Cyan / Magenta)
@@ -802,72 +893,10 @@
       ],
       goal: { x: 2280, y: 440, width: 20, height: 36 }
     },
-    {
-      id: 3, name: "Grid Abyss", world: 1, bpm: 110, spawn: { x: 50, y: 390 }, width: 2550, height: 540,
-      platforms: [
-        // Section 1: Grid Runway
-        { x: 0, y: 440, width: 320, height: 100 },
-        // Section 2: Dual Route Lower & Upper
-        { x: 380, y: 440, width: 320, height: 100 },
-        { x: 450, y: 340, width: 240, height: 24 },
-        // Section 3: Chasm Leaps
-        { x: 760, y: 420, width: 170, height: 120 },
-        { x: 990, y: 370, width: 160, height: 170 },
-        { x: 1210, y: 440, width: 380, height: 100 },
-        // Section 4: Beetle Patrol
-        { x: 1650, y: 380, width: 160, height: 24 },
-        { x: 1870, y: 330, width: 180, height: 24 },
-        { x: 2110, y: 390, width: 160, height: 24 },
-        // Section 5: Grid Exit & Goal
-        { x: 2330, y: 440, width: 270, height: 100 }
-      ],
-      hazards: [],
-      enemies: [
-        { x: 1330, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 },
-        { x: 1460, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 }
-      ],
-      targetBlocks: [
-        { x: 570, y: 318, width: 26, height: 26 },
-        { x: 840, y: 398, width: 26, height: 26 }
-      ],
-      goal: { x: 2470, y: 440, width: 20, height: 36 }
-    },
-    {
-      id: 4, name: "First Contact", world: 1, bpm: 110, spawn: { x: 50, y: 390 }, width: 2750, height: 540,
-      platforms: [
-        // Section 1: Outskirts Runway
-        { x: 0, y: 440, width: 340, height: 100 },
-        // Section 2: Patrol Alley
-        { x: 400, y: 440, width: 360, height: 100 },
-        // Section 3: Elevated Overpass & Drone Flight
-        { x: 820, y: 390, width: 160, height: 24 },
-        { x: 1040, y: 330, width: 220, height: 24 },
-        { x: 1320, y: 380, width: 170, height: 24 },
-        // Section 4: Lower Tunnels & Beetles
-        { x: 1550, y: 440, width: 380, height: 100 },
-        // Section 5: Floating Pillars
-        { x: 1990, y: 380, width: 140, height: 24 },
-        { x: 2190, y: 340, width: 140, height: 24 },
-        { x: 2390, y: 390, width: 140, height: 24 },
-        // Section 6: Outskirts Gate & Goal
-        { x: 2580, y: 440, width: 250, height: 100 }
-      ],
-      hazards: [],
-      enemies: [
-        { x: 530, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 },
-        { x: 1140, y: 260, width: 22, height: 22, type: 'patrol_drone', vx: 1.0, maxTravel: 70, health: 1 },
-        { x: 1710, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 1.0, maxTravel: 60, health: 1 }
-      ],
-      targetBlocks: [
-        { x: 620, y: 418, width: 26, height: 26 },
-        { x: 1110, y: 308, width: 26, height: 26 }
-      ],
-      goal: { x: 2680, y: 440, width: 20, height: 36 }
-    },
 
-    // World 2: Dark Forest (Green / Bio-Luminescent)
+    // Chapter 2 / World 2: Dark Forest (Green / Bio-Luminescent)
     {
-      id: 5, name: "Spore Caverns", world: 2, bpm: 112, spawn: { x: 50, y: 390 }, width: 2950, height: 540,
+      id: 3, name: "Spore Caverns", world: 2, bpm: 112, spawn: { x: 50, y: 390 }, width: 2950, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 410, width: 180, height: 130 },
@@ -896,7 +925,7 @@
       goal: { x: 2880, y: 440, width: 20, height: 36 }
     },
     {
-      id: 6, name: "Overgrowth Run", world: 2, bpm: 114, spawn: { x: 50, y: 390 }, width: 3150, height: 540,
+      id: 4, name: "Overgrowth Run", world: 2, bpm: 114, spawn: { x: 50, y: 390 }, width: 3150, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 440, width: 340, height: 100 },
@@ -921,70 +950,10 @@
       ],
       goal: { x: 3040, y: 440, width: 20, height: 36 }
     },
-    {
-      id: 7, name: "Swarm Canopy", world: 2, bpm: 115, spawn: { x: 50, y: 390 }, width: 3350, height: 540,
-      platforms: [
-        { x: 0, y: 440, width: 320, height: 100 },
-        { x: 380, y: 400, width: 180, height: 140 },
-        { x: 620, y: 340, width: 180, height: 200 },
-        { x: 860, y: 390, width: 180, height: 150 },
-        { x: 1100, y: 440, width: 360, height: 100 },
-        { x: 1520, y: 380, width: 160, height: 24 },
-        { x: 1740, y: 330, width: 160, height: 24 },
-        { x: 1960, y: 280, width: 160, height: 24 },
-        { x: 2180, y: 340, width: 160, height: 24 },
-        { x: 2400, y: 440, width: 380, height: 100 },
-        { x: 2840, y: 380, width: 160, height: 24 },
-        { x: 3060, y: 440, width: 320, height: 100 }
-      ],
-      hazards: [
-        { x: 1220, y: 432, width: 50, height: 8, type: 'spikes' }
-      ],
-      enemies: [
-        { x: 710, y: 260, width: 22, height: 22, type: 'patrol_drone', vx: 1.1, maxTravel: 60, health: 1 },
-        { x: 1820, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.2, maxTravel: 65, health: 1 },
-        { x: 2560, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 }
-      ],
-      targetBlocks: [
-        { x: 940, y: 368, width: 26, height: 26 },
-        { x: 2030, y: 258, width: 26, height: 26 }
-      ],
-      goal: { x: 3240, y: 440, width: 20, height: 36 }
-    },
-    {
-      id: 8, name: "Shifting Moss", world: 2, bpm: 116, spawn: { x: 50, y: 390 }, width: 3550, height: 540,
-      platforms: [
-        { x: 0, y: 440, width: 300, height: 100 },
-        { x: 360, y: 430, width: 110, height: 20, isMoving: true, vx: 1.3, vy: 0, travelDistance: 130, travelProgress: 0 },
-        { x: 640, y: 410, width: 180, height: 130 },
-        { x: 880, y: 360, width: 180, height: 180 },
-        { x: 1120, y: 360, width: 110, height: 20, isMoving: true, vx: 0, vy: -1.1, travelDistance: 70, travelProgress: 0 },
-        { x: 1370, y: 280, width: 200, height: 260 },
-        { x: 1630, y: 360, width: 120, height: 20, isMoving: true, vx: 1.4, vy: 0, travelDistance: 140, travelProgress: 0 },
-        { x: 1930, y: 440, width: 380, height: 100 },
-        { x: 2370, y: 380, width: 150, height: 24 },
-        { x: 2580, y: 330, width: 150, height: 24 },
-        { x: 2790, y: 380, width: 150, height: 24 },
-        { x: 3000, y: 440, width: 200, height: 100 },
-        { x: 3260, y: 440, width: 320, height: 100 }
-      ],
-      hazards: [
-        { x: 2050, y: 432, width: 50, height: 8, type: 'spikes' }
-      ],
-      enemies: [
-        { x: 1460, y: 268, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 },
-        { x: 2110, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 1.0, maxTravel: 60, health: 1 }
-      ],
-      targetBlocks: [
-        { x: 960, y: 338, width: 26, height: 26 },
-        { x: 2440, y: 358, width: 26, height: 26 }
-      ],
-      goal: { x: 3430, y: 440, width: 20, height: 36 }
-    },
 
-    // World 3: Underground Factory (Amber / Industrial)
+    // Chapter 3 / World 3: Underground Factory (Amber / Industrial)
     {
-      id: 9, name: "Piston Core", world: 3, bpm: 118, spawn: { x: 50, y: 390 }, width: 3750, height: 540,
+      id: 5, name: "Piston Core", world: 3, bpm: 118, spawn: { x: 50, y: 390 }, width: 3750, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 430, width: 100, height: 20, isMoving: true, vx: 0, vy: -1.0, travelDistance: 70, travelProgress: 0 },
@@ -1016,7 +985,7 @@
       goal: { x: 3620, y: 440, width: 20, height: 36 }
     },
     {
-      id: 10, name: "Steam Maze", world: 3, bpm: 120, spawn: { x: 50, y: 390 }, width: 3950, height: 540,
+      id: 6, name: "Steam Maze", world: 3, bpm: 120, spawn: { x: 50, y: 390 }, width: 3950, height: 540,
       platforms: [
         { x: 0, y: 440, width: 300, height: 100 },
         { x: 360, y: 410, width: 170, height: 130 },
@@ -1048,75 +1017,10 @@
       ],
       goal: { x: 3820, y: 440, width: 20, height: 36 }
     },
-    {
-      id: 11, name: "Overclock", world: 3, bpm: 124, spawn: { x: 50, y: 390 }, width: 4150, height: 540,
-      platforms: [
-        { x: 0, y: 440, width: 320, height: 100 },
-        { x: 380, y: 410, width: 180, height: 130 },
-        { x: 620, y: 410, width: 110, height: 20, isMoving: true, vx: 1.5, vy: 0, travelDistance: 130, travelProgress: 0 },
-        { x: 900, y: 380, width: 200, height: 160 },
-        { x: 1160, y: 440, width: 380, height: 100 },
-        { x: 1600, y: 380, width: 160, height: 24 },
-        { x: 1820, y: 320, width: 180, height: 24 },
-        { x: 2060, y: 370, width: 160, height: 24 },
-        { x: 2280, y: 440, width: 380, height: 100 },
-        { x: 2720, y: 380, width: 150, height: 24 },
-        { x: 2930, y: 330, width: 160, height: 24 },
-        { x: 3150, y: 380, width: 150, height: 24 },
-        { x: 3360, y: 440, width: 810, height: 100 }
-      ],
-      hazards: [
-        { x: 980, y: 372, width: 40, height: 8, type: 'laser' },
-        { x: 1300, y: 432, width: 40, height: 8, type: 'laser' },
-        { x: 2420, y: 432, width: 40, height: 8, type: 'laser' }
-      ],
-      enemies: [
-        { x: 1260, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 1.1, maxTravel: 60, health: 1 },
-        { x: 1910, y: 240, width: 22, height: 22, type: 'patrol_drone', vx: 1.2, maxTravel: 60, health: 1 },
-        { x: 2510, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 1.1, maxTravel: 60, health: 1 }
-      ],
-      targetBlocks: [
-        { x: 1680, y: 358, width: 26, height: 26 },
-        { x: 3010, y: 308, width: 26, height: 26 }
-      ],
-      goal: { x: 4010, y: 440, width: 20, height: 36 }
-    },
-    {
-      id: 12, name: "Conveyor Hazard", world: 3, bpm: 124, spawn: { x: 50, y: 390 }, width: 4350, height: 540,
-      platforms: [
-        { x: 0, y: 440, width: 320, height: 100 },
-        { x: 380, y: 440, width: 360, height: 100 },
-        { x: 800, y: 400, width: 220, height: 140 },
-        { x: 1080, y: 440, width: 360, height: 100 },
-        { x: 1500, y: 380, width: 170, height: 24 },
-        { x: 1730, y: 330, width: 180, height: 24 },
-        { x: 1970, y: 380, width: 170, height: 24 },
-        { x: 2200, y: 440, width: 400, height: 100 },
-        { x: 2660, y: 380, width: 160, height: 24 },
-        { x: 2880, y: 330, width: 170, height: 24 },
-        { x: 3110, y: 380, width: 160, height: 24 },
-        { x: 3330, y: 440, width: 1040, height: 100 }
-      ],
-      hazards: [
-        { x: 500, y: 432, width: 45, height: 8, type: 'spikes' },
-        { x: 1200, y: 432, width: 45, height: 8, type: 'spikes' },
-        { x: 2350, y: 432, width: 45, height: 8, type: 'spikes' }
-      ],
-      enemies: [
-        { x: 890, y: 384, width: 30, height: 30, type: 'titan_guard', vx: 0.7, maxTravel: 45, health: 2 },
-        { x: 1820, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.2, maxTravel: 60, health: 1 },
-        { x: 2400, y: 424, width: 30, height: 30, type: 'titan_guard', vx: 0.7, maxTravel: 50, health: 2 }
-      ],
-      targetBlocks: [
-        { x: 1580, y: 358, width: 26, height: 26 },
-        { x: 2960, y: 308, width: 26, height: 26 }
-      ],
-      goal: { x: 4210, y: 440, width: 20, height: 36 }
-    },
 
-    // World 4: Neon Cyber World (Purple / Violet)
+    // Chapter 4 / World 4: Neon Cyber World (Purple / Violet)
     {
-      id: 13, name: "Data Stream", world: 4, bpm: 126, spawn: { x: 50, y: 390 }, width: 4550, height: 540,
+      id: 7, name: "Data Stream", world: 4, bpm: 126, spawn: { x: 50, y: 390 }, width: 4550, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 400, width: 190, height: 140 },
@@ -1148,7 +1052,7 @@
       goal: { x: 4420, y: 440, width: 20, height: 36 }
     },
     {
-      id: 14, name: "Glitch Vector", world: 4, bpm: 128, spawn: { x: 50, y: 390 }, width: 4750, height: 540,
+      id: 8, name: "Glitch Vector", world: 4, bpm: 128, spawn: { x: 50, y: 390 }, width: 4750, height: 540,
       platforms: [
         { x: 0, y: 440, width: 300, height: 100 },
         { x: 360, y: 410, width: 170, height: 130 },
@@ -1181,81 +1085,10 @@
       ],
       goal: { x: 4610, y: 440, width: 20, height: 36 }
     },
-    {
-      id: 15, name: "Syntax Sprint", world: 4, bpm: 130, spawn: { x: 50, y: 390 }, width: 4950, height: 540,
-      platforms: [
-        { x: 0, y: 440, width: 300, height: 100 },
-        { x: 360, y: 440, width: 240, height: 100 },
-        { x: 660, y: 400, width: 180, height: 140 },
-        { x: 900, y: 350, width: 180, height: 190 },
-        { x: 1140, y: 380, width: 180, height: 160 },
-        { x: 1380, y: 440, width: 420, height: 100 },
-        { x: 1860, y: 380, width: 160, height: 24 },
-        { x: 2080, y: 320, width: 170, height: 24 },
-        { x: 2310, y: 270, width: 170, height: 24 },
-        { x: 2540, y: 330, width: 170, height: 24 },
-        { x: 2770, y: 440, width: 440, height: 100 },
-        { x: 3270, y: 380, width: 160, height: 24 },
-        { x: 3490, y: 330, width: 160, height: 24 },
-        { x: 3710, y: 390, width: 160, height: 24 },
-        { x: 3930, y: 440, width: 1040, height: 100 }
-      ],
-      hazards: [
-        { x: 450, y: 432, width: 40, height: 8, type: 'laser' },
-        { x: 1210, y: 372, width: 40, height: 8, type: 'laser' },
-        { x: 1550, y: 432, width: 40, height: 8, type: 'laser' },
-        { x: 2940, y: 432, width: 40, height: 8, type: 'laser' }
-      ],
-      enemies: [
-        { x: 990, y: 334, width: 26, height: 18, type: 'cyber_prowler', vx: 1.4, maxTravel: 60, health: 1 },
-        { x: 2160, y: 240, width: 22, height: 22, type: 'patrol_drone', vx: 1.3, maxTravel: 60, health: 1 },
-        { x: 2950, y: 428, width: 26, height: 18, type: 'cyber_prowler', vx: 1.5, maxTravel: 65, health: 1 }
-      ],
-      targetBlocks: [
-        { x: 740, y: 378, width: 26, height: 26 },
-        { x: 2390, y: 248, width: 26, height: 26 },
-        { x: 3570, y: 308, width: 26, height: 26 }
-      ],
-      goal: { x: 4810, y: 440, width: 20, height: 36 }
-    },
-    {
-      id: 16, name: "Hyperspace Beat", world: 4, bpm: 132, spawn: { x: 50, y: 390 }, width: 5150, height: 540,
-      platforms: [
-        { x: 0, y: 440, width: 300, height: 100 },
-        { x: 360, y: 410, width: 110, height: 20, isMoving: true, vx: 1.6, vy: 0, travelDistance: 130, travelProgress: 0 },
-        { x: 640, y: 380, width: 190, height: 160 },
-        { x: 890, y: 360, width: 110, height: 20, isMoving: true, vx: 0, vy: -1.2, travelDistance: 70, travelProgress: 0 },
-        { x: 1140, y: 290, width: 200, height: 250 },
-        { x: 1400, y: 440, width: 440, height: 100 },
-        { x: 1900, y: 380, width: 170, height: 24 },
-        { x: 2130, y: 330, width: 170, height: 24 },
-        { x: 2360, y: 380, width: 170, height: 24 },
-        { x: 2590, y: 440, width: 460, height: 100 },
-        { x: 3110, y: 380, width: 170, height: 24 },
-        { x: 3340, y: 330, width: 170, height: 24 },
-        { x: 3570, y: 380, width: 170, height: 24 },
-        { x: 3800, y: 440, width: 1370, height: 100 }
-      ],
-      hazards: [
-        { x: 720, y: 372, width: 45, height: 8, type: 'spikes' },
-        { x: 1570, y: 432, width: 50, height: 8, type: 'spikes' },
-        { x: 2780, y: 432, width: 50, height: 8, type: 'spikes' }
-      ],
-      enemies: [
-        { x: 1240, y: 274, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 45, health: 2 },
-        { x: 2210, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.3, maxTravel: 60, health: 1 },
-        { x: 2800, y: 424, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 50, health: 2 }
-      ],
-      targetBlocks: [
-        { x: 1480, y: 418, width: 26, height: 26 },
-        { x: 3220, y: 358, width: 26, height: 26 }
-      ],
-      goal: { x: 5020, y: 440, width: 20, height: 36 }
-    },
 
-    // World 5: Ancient Futuristic Ruins (Electric Blue / Chrono Gold)
+    // Chapter 5 / World 5: Ancient Futuristic Ruins (Electric Blue / Chrono Gold)
     {
-      id: 17, name: "Forgotten Nexus", world: 5, bpm: 134, spawn: { x: 50, y: 390 }, width: 5350, height: 540,
+      id: 9, name: "Forgotten Nexus", world: 5, bpm: 134, spawn: { x: 50, y: 390 }, width: 5350, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 400, width: 180, height: 140 },
@@ -1292,82 +1125,7 @@
       goal: { x: 5220, y: 440, width: 20, height: 36 }
     },
     {
-      id: 18, name: "Titan's Gate", world: 5, bpm: 136, spawn: { x: 50, y: 390 }, width: 5550, height: 540,
-      platforms: [
-        { x: 0, y: 440, width: 320, height: 100 },
-        { x: 380, y: 420, width: 240, height: 120 },
-        { x: 680, y: 380, width: 200, height: 160 },
-        { x: 940, y: 380, width: 120, height: 20, isMoving: true, vx: 1.6, vy: 0, travelDistance: 130, travelProgress: 0 },
-        { x: 1230, y: 410, width: 260, height: 130 },
-        { x: 1550, y: 440, width: 460, height: 100 },
-        { x: 2070, y: 380, width: 180, height: 24 },
-        { x: 2310, y: 330, width: 180, height: 24 },
-        { x: 2550, y: 380, width: 180, height: 24 },
-        { x: 2790, y: 440, width: 480, height: 100 },
-        { x: 3330, y: 380, width: 170, height: 24 },
-        { x: 3560, y: 330, width: 170, height: 24 },
-        { x: 3790, y: 380, width: 170, height: 24 },
-        { x: 4020, y: 440, width: 1550, height: 100 }
-      ],
-      hazards: [
-        { x: 460, y: 412, width: 50, height: 8, type: 'spikes' },
-        { x: 1740, y: 432, width: 50, height: 8, type: 'spikes' },
-        { x: 2980, y: 432, width: 50, height: 8, type: 'spikes' }
-      ],
-      enemies: [
-        { x: 780, y: 364, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 45, health: 2 },
-        { x: 1780, y: 424, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 55, health: 2 },
-        { x: 2390, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.3, maxTravel: 60, health: 1 },
-        { x: 3020, y: 424, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 55, health: 2 }
-      ],
-      targetBlocks: [
-        { x: 1350, y: 388, width: 26, height: 26 },
-        { x: 2150, y: 358, width: 26, height: 26 },
-        { x: 3640, y: 308, width: 26, height: 26 }
-      ],
-      goal: { x: 5410, y: 440, width: 20, height: 36 }
-    },
-    {
-      id: 19, name: "Chrono Collapse", world: 5, bpm: 138, spawn: { x: 50, y: 390 }, width: 5750, height: 540,
-      platforms: [
-        { x: 0, y: 440, width: 300, height: 100 },
-        { x: 360, y: 410, width: 110, height: 20, isMoving: true, vx: 1.5, vy: 0, travelDistance: 130, travelProgress: 0 },
-        { x: 640, y: 370, width: 180, height: 170 },
-        { x: 880, y: 340, width: 110, height: 20, isMoving: true, vx: 0, vy: -1.3, travelDistance: 70, travelProgress: 0 },
-        { x: 1130, y: 270, width: 200, height: 270 },
-        { x: 1390, y: 360, width: 120, height: 20, isMoving: true, vx: 1.6, vy: 0, travelDistance: 140, travelProgress: 0 },
-        { x: 1690, y: 440, width: 440, height: 100 },
-        { x: 2190, y: 380, width: 170, height: 24 },
-        { x: 2420, y: 330, width: 170, height: 24 },
-        { x: 2650, y: 280, width: 170, height: 24 },
-        { x: 2880, y: 340, width: 170, height: 24 },
-        { x: 3110, y: 440, width: 480, height: 100 },
-        { x: 3650, y: 380, width: 170, height: 24 },
-        { x: 3880, y: 330, width: 170, height: 24 },
-        { x: 4110, y: 390, width: 170, height: 24 },
-        { x: 4340, y: 440, width: 1420, height: 100 }
-      ],
-      hazards: [
-        { x: 720, y: 362, width: 40, height: 8, type: 'laser' },
-        { x: 1210, y: 262, width: 40, height: 8, type: 'spikes' },
-        { x: 1870, y: 432, width: 50, height: 8, type: 'laser' },
-        { x: 3310, y: 432, width: 50, height: 8, type: 'spikes' }
-      ],
-      enemies: [
-        { x: 1220, y: 220, width: 22, height: 22, type: 'patrol_drone', vx: 1.4, maxTravel: 60, health: 1 },
-        { x: 1910, y: 428, width: 26, height: 18, type: 'cyber_prowler', vx: 1.5, maxTravel: 60, health: 1 },
-        { x: 2510, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.3, maxTravel: 60, health: 1 },
-        { x: 3330, y: 428, width: 26, height: 18, type: 'cyber_prowler', vx: 1.5, maxTravel: 60, health: 1 }
-      ],
-      targetBlocks: [
-        { x: 1770, y: 418, width: 26, height: 26 },
-        { x: 2730, y: 258, width: 26, height: 26 },
-        { x: 3960, y: 308, width: 26, height: 26 }
-      ],
-      goal: { x: 5610, y: 440, width: 20, height: 36 }
-    },
-    {
-      id: 20, name: "The Chrono Core", world: 5, bpm: 140, spawn: { x: 50, y: 390 }, width: 6000, height: 540,
+      id: 10, name: "The Chrono Core", world: 5, bpm: 140, spawn: { x: 50, y: 390 }, width: 6000, height: 540,
       platforms: [
         // Sector 1: Nexus Entry Runway (0-450)
         { x: 0, y: 440, width: 450, height: 100 },
@@ -2980,11 +2738,11 @@
 
   /**
    * 22. nextLevel()
-   * Advances to the next level (1 to 20)
+   * Advances to the next level (1 to 10)
    */
   function nextLevel() {
     if (!currentGameInstance) return;
-    const nextId = Math.min(20, currentGameInstance.currentLevelId + 1);
+    const nextId = Math.min(10, currentGameInstance.currentLevelId + 1);
     currentGameInstance.startLevel(nextId);
   }
 
@@ -3452,38 +3210,28 @@
   }
 
   // =========================================================================
-  // 5. COMPREHENSIVE LEVEL THEME REGISTRY (20 INDIVIDUAL REALMS & PALETTES)
+  // 5. COMPREHENSIVE LEVEL THEME REGISTRY (10 REALMS - 2 PER CHAPTER)
   // =========================================================================
   const THEME_REGISTRY = {
-    // --- 🏙️ WORLD 1: DIGITAL NIGHT CITY (Levels 1-4) ---
+    // --- 🏙️ CHAPTER 1: DIGITAL NIGHT CITY (Levels 1-2) ---
     1: { id: 1, type: 'smart_city', name: 'Neon Awakening', shortName: 'Neon City', icon: '🏙️', themeTitle: 'CYBER METROPOLIS', topColor: '#00f0ff', bodyColor: '#0b1324', bodyGrad: ['#131c30', '#0b1220', '#04070e'] },
     2: { id: 2, type: 'smart_city', name: 'Rooftop Leap', shortName: 'Rooftops', icon: '🌆', themeTitle: 'ROOFTOP SKYLINE', topColor: '#ff007f', bodyColor: '#1a0822', bodyGrad: ['#260c33', '#15051c', '#08020a'] },
-    3: { id: 3, type: 'smart_city', name: 'Grid Abyss', shortName: 'Grid Abyss', icon: '⚡', themeTitle: 'SUB-CITY CHASM', topColor: '#00ffcc', bodyColor: '#061a1a', bodyGrad: ['#072426', '#031417', '#01080a'] },
-    4: { id: 4, type: 'smart_city', name: 'First Contact', shortName: 'Orbital Port', icon: '🚀', themeTitle: 'ORBITAL SKYPORT', topColor: '#38bdf8', bodyColor: '#0c1228', bodyGrad: ['#141c3b', '#0b0f24', '#040612'] },
 
-    // --- 🌲 WORLD 2: BIOLUMINESCENT NATURE (Levels 5-8) ---
-    5: { id: 5, type: 'nature', name: 'Spore Caverns', shortName: 'Spore Caves', icon: '🍄', themeTitle: 'SPORE CAVERNS', topColor: '#00ff88', bodyColor: '#07180f', bodyGrad: ['#0a2416', '#06170e', '#020905'] },
-    6: { id: 6, type: 'nature', name: 'Overgrowth Run', shortName: 'Overgrowth', icon: '🌿', themeTitle: 'ANCIENT CANOPY', topColor: '#a3e635', bodyColor: '#0d1c08', bodyGrad: ['#1c3010', '#101d08', '#050c02'] },
-    7: { id: 7, type: 'nature', name: 'Swarm Canopy', shortName: 'Swarm Bayou', icon: '🎋', themeTitle: 'TWILIGHT SWAMP', topColor: '#2dd4bf', bodyColor: '#081a18', bodyGrad: ['#0e2926', '#071716', '#020a0a'] },
-    8: { id: 8, type: 'nature', name: 'Shifting Moss', shortName: 'Crystal Falls', icon: '💎', themeTitle: 'ENCHANTED FALLS', topColor: '#34d399', bodyColor: '#09211c', bodyGrad: ['#0c2e27', '#051a15', '#010c0a'] },
+    // --- 🌲 CHAPTER 2: BIOLUMINESCENT NATURE (Levels 3-4) ---
+    3: { id: 3, type: 'nature', name: 'Spore Caverns', shortName: 'Spore Caves', icon: '🍄', themeTitle: 'SPORE CAVERNS', topColor: '#00ff88', bodyColor: '#07180f', bodyGrad: ['#0a2416', '#06170e', '#020905'] },
+    4: { id: 4, type: 'nature', name: 'Overgrowth Run', shortName: 'Overgrowth', icon: '🌿', themeTitle: 'ANCIENT CANOPY', topColor: '#a3e635', bodyColor: '#0d1c08', bodyGrad: ['#1c3010', '#101d08', '#050c02'] },
 
-    // --- 🌋 WORLD 3: UNDERGROUND FACTORY & FOUNDRY (Levels 9-12) ---
-    9: { id: 9, type: 'foundry', name: 'Piston Core', shortName: 'Piston Core', icon: '🌋', themeTitle: 'VOLCANIC FOUNDRY', topColor: '#ff3b30', bodyColor: '#240606', bodyGrad: ['#2e0c0c', '#1a0505', '#0a0202'] },
-    10: { id: 10, type: 'foundry', name: 'Steam Maze', shortName: 'Steam Maze', icon: '⚙️', themeTitle: 'STEAM FACTORY', topColor: '#f59e0b', bodyColor: '#211306', bodyGrad: ['#2e1b09', '#1a0e04', '#0a0501'] },
-    11: { id: 11, type: 'foundry', name: 'Overclock', shortName: 'Overclock', icon: '☢️', themeTitle: 'PLASMA REACTOR', topColor: '#c084fc', bodyColor: '#1d062b', bodyGrad: ['#29093d', '#150421', '#07010d'] },
-    12: { id: 12, type: 'foundry', name: 'Conveyor Hazard', shortName: 'Conveyors', icon: '🔥', themeTitle: 'HEAVY SMELTER', topColor: '#ff6b00', bodyColor: '#240d03', bodyGrad: ['#301205', '#1a0902', '#0a0300'] },
+    // --- 🌋 CHAPTER 3: UNDERGROUND FACTORY & FOUNDRY (Levels 5-6) ---
+    5: { id: 5, type: 'foundry', name: 'Piston Core', shortName: 'Piston Core', icon: '🌋', themeTitle: 'VOLCANIC FOUNDRY', topColor: '#ff3b30', bodyColor: '#240606', bodyGrad: ['#2e0c0c', '#1a0505', '#0a0202'] },
+    6: { id: 6, type: 'foundry', name: 'Steam Maze', shortName: 'Steam Maze', icon: '⚙️', themeTitle: 'STEAM FACTORY', topColor: '#f59e0b', bodyColor: '#211306', bodyGrad: ['#2e1b09', '#1a0e04', '#0a0501'] },
 
-    // --- 🌌 WORLD 4: DEEP CYBERSPACE & RETROWAVE (Levels 13-16) ---
-    13: { id: 13, type: 'space', name: 'Data Stream', shortName: 'Data Stream', icon: '💾', themeTitle: 'CYBERSPACE VOID', topColor: '#00ff66', bodyColor: '#031c0a', bodyGrad: ['#05260f', '#021607', '#010a03'] },
-    14: { id: 14, type: 'space', name: 'Glitch Vector', shortName: 'Glitch Core', icon: '👾', themeTitle: 'GLITCH REALM', topColor: '#f43f5e', bodyColor: '#210414', bodyGrad: ['#2b071b', '#170310', '#0a0106'] },
-    15: { id: 15, type: 'space', name: 'Syntax Sprint', shortName: 'Laser Run', icon: '⚡', themeTitle: 'DATA HIGHWAY', topColor: '#06b6d4', bodyColor: '#061724', bodyGrad: ['#082133', '#03131c', '#01080d'] },
-    16: { id: 16, type: 'space', name: 'Hyperspace Beat', shortName: 'Synthwave', icon: '🎵', themeTitle: 'SYNTHWAVE NEON', topColor: '#fb7185', bodyColor: '#24061a', bodyGrad: ['#2e0921', '#170311', '#0a0106'] },
+    // --- 🌌 CHAPTER 4: DEEP CYBERSPACE & RETROWAVE (Levels 7-8) ---
+    7: { id: 7, type: 'space', name: 'Data Stream', shortName: 'Data Stream', icon: '💾', themeTitle: 'CYBERSPACE VOID', topColor: '#00ff66', bodyColor: '#031c0a', bodyGrad: ['#05260f', '#021607', '#010a03'] },
+    8: { id: 8, type: 'space', name: 'Glitch Vector', shortName: 'Glitch Core', icon: '👾', themeTitle: 'GLITCH REALM', topColor: '#f43f5e', bodyColor: '#210414', bodyGrad: ['#2b071b', '#170310', '#0a0106'] },
 
-    // --- 🏛️ WORLD 5: ANCIENT CELESTIAL RUINS & CHRONO CORE (Levels 17-20) ---
-    17: { id: 17, type: 'ruins', name: 'Forgotten Nexus', shortName: 'Starlight Ruins', icon: '🏛️', themeTitle: 'CELESTIAL TEMPLE', topColor: '#818cf8', bodyColor: '#120d29', bodyGrad: ['#191238', '#0e0a24', '#050312'] },
-    18: { id: 18, type: 'ruins', name: 'Titan\'s Gate', shortName: 'Titan Gate', icon: '🗿', themeTitle: 'TITAN SANCTUARY', topColor: '#fbbf24', bodyColor: '#1f1404', bodyGrad: ['#291a06', '#170e03', '#0a0600'] },
-    19: { id: 19, type: 'ruins', name: 'Chrono Collapse', shortName: 'Black Hole', icon: '⏳', themeTitle: 'TEMPORAL VORTEX', topColor: '#a855f7', bodyColor: '#160524', bodyGrad: ['#210836', '#10031c', '#06010d'] },
-    20: { id: 20, type: 'nexus', name: 'The Chrono Core', shortName: 'Chrono Core', icon: '👑', themeTitle: 'QUANTUM SINGULARITY', topColor: '#00f0ff', bodyColor: '#0c162e', bodyGrad: ['#122042', '#071026', '#020512'] }
+    // --- 🏛️ CHAPTER 5: ANCIENT CELESTIAL RUINS & CHRONO CORE (Levels 9-10) ---
+    9: { id: 9, type: 'ruins', name: 'Forgotten Nexus', shortName: 'Starlight Ruins', icon: '🏛️', themeTitle: 'CELESTIAL TEMPLE', topColor: '#818cf8', bodyColor: '#120d29', bodyGrad: ['#191238', '#0e0a24', '#050312'] },
+    10: { id: 10, type: 'nexus', name: 'The Chrono Core', shortName: 'Chrono Core', icon: '👑', themeTitle: 'QUANTUM SINGULARITY', topColor: '#00f0ff', bodyColor: '#0c162e', bodyGrad: ['#122042', '#071026', '#020512'] }
   };
 
   function getLevelTheme(levelOrId) {
@@ -3787,6 +3535,18 @@
       sound.playPlayerDefeat();
       this.addExplosion(this.player.x, this.player.y, '#ff3344', 45);
 
+      // Save any coins collected in this attempt to gameStateData and sync leaderboard!
+      if (!gameStateData.levelCoins) gameStateData.levelCoins = {};
+      const prevBest = gameStateData.levelCoins[this.currentLevelId] || 0;
+      if (this.coinsCollected > prevBest) {
+        gameStateData.levelCoins[this.currentLevelId] = this.coinsCollected;
+        let sumCoins = 0;
+        for (const id in gameStateData.levelCoins) sumCoins += gameStateData.levelCoins[id];
+        gameStateData.totalCoins = sumCoins;
+        persistData();
+        syncCurrentPlayerToLeaderboard();
+      }
+
       const defeatAttemptTag = document.getElementById('defeat-attempt-display');
       if (defeatAttemptTag) defeatAttemptTag.textContent = 'OUT OF LIVES';
       const defeatLivesEl = document.getElementById('defeat-lives-display');
@@ -3812,11 +3572,11 @@
       // Progressive level unlock: unlock next level one by one as levels are completed
       const nextLevelId = this.currentLevelId + 1;
       let newlyUnlocked = false;
-      if (nextLevelId <= 20 && nextLevelId > (gameStateData.unlockedLevel || 1)) {
+      if (nextLevelId <= 10 && nextLevelId > (gameStateData.unlockedLevel || 1)) {
         gameStateData.unlockedLevel = nextLevelId;
         newlyUnlocked = true;
       }
-      gameStateData.lastPlayedLevel = Math.min(20, nextLevelId <= 20 ? nextLevelId : this.currentLevelId);
+      gameStateData.lastPlayedLevel = Math.min(10, nextLevelId <= 10 ? nextLevelId : this.currentLevelId);
 
       if (!gameStateData.levelCoins) gameStateData.levelCoins = {};
       const prevBestCoins = gameStateData.levelCoins[this.currentLevelId] || 0;
@@ -3854,11 +3614,11 @@
       // Next level unlocked notification badge
       const unlockBadge = document.getElementById('complete-unlock-badge');
       if (unlockBadge) {
-        if (newlyUnlocked && nextLevelId <= 20) {
+        if (newlyUnlocked && nextLevelId <= 10) {
           unlockBadge.textContent = `🔓 LEVEL ${String(nextLevelId).padStart(2, '0')} UNLOCKED!`;
           unlockBadge.classList.remove('hidden');
-        } else if (this.currentLevelId === 20) {
-          unlockBadge.textContent = `🏆 MISSION COMPLETED: ALL 20 REALMS CONQUERED!`;
+        } else if (this.currentLevelId === 10) {
+          unlockBadge.textContent = `🏆 MISSION COMPLETED: ALL 10 REALMS CONQUERED!`;
           unlockBadge.classList.remove('hidden');
         } else {
           unlockBadge.classList.add('hidden');
@@ -3868,7 +3628,7 @@
       // Update Next Level button text
       const nextBtn = document.getElementById('btn-complete-next');
       if (nextBtn) {
-        if (this.currentLevelId >= 20) {
+        if (this.currentLevelId >= 10) {
           nextBtn.textContent = '🏆 ALL MISSIONS CLEARED';
         } else {
           nextBtn.textContent = `NEXT LEVEL (${String(nextLevelId).padStart(2, '0')}) ❯`;
@@ -4363,6 +4123,20 @@
             this.addFloatingPopup(coin.x, coin.y - 14, '+100', '#ffd700');
             this.addCoinSparkles(coin.x, coin.y);
             this.updateHUDStats();
+
+            // Real-time leaderboard score sync
+            if (!gameStateData.levelCoins) gameStateData.levelCoins = {};
+            const prev = gameStateData.levelCoins[this.currentLevelId] || 0;
+            if (this.coinsCollected > prev) {
+              gameStateData.levelCoins[this.currentLevelId] = this.coinsCollected;
+              let sumCoins = 0;
+              for (const id in gameStateData.levelCoins) {
+                sumCoins += gameStateData.levelCoins[id];
+              }
+              gameStateData.totalCoins = sumCoins;
+              persistData();
+              syncCurrentPlayerToLeaderboard();
+            }
           }
         }
       }
@@ -4695,7 +4469,7 @@
     }
 
     // =========================================================================
-    // PARALLAX BACKGROUND SYSTEM: 20 UNIQUE HANDCRAFTED BACKGROUNDS
+    // PARALLAX BACKGROUND SYSTEM: 10 UNIQUE HANDCRAFTED BACKGROUNDS (2 PER CHAPTER)
     // =========================================================================
     drawParallaxBackground(w, h, levelOrWorld) {
       const levelId = (levelOrWorld && typeof levelOrWorld === 'object') ? (levelOrWorld.id || 1) : (levelOrWorld || 1);
@@ -4704,24 +4478,14 @@
       switch (levelId) {
         case 1: this.drawLevel1Background(w, h, theme); break;
         case 2: this.drawLevel2Background(w, h, theme); break;
-        case 3: this.drawLevel3Background(w, h, theme); break;
-        case 4: this.drawLevel4Background(w, h, theme); break;
-        case 5: this.drawLevel5Background(w, h, theme); break;
-        case 6: this.drawLevel6Background(w, h, theme); break;
-        case 7: this.drawLevel7Background(w, h, theme); break;
-        case 8: this.drawLevel8Background(w, h, theme); break;
-        case 9: this.drawLevel9Background(w, h, theme); break;
-        case 10: this.drawLevel10Background(w, h, theme); break;
-        case 11: this.drawLevel11Background(w, h, theme); break;
-        case 12: this.drawLevel12Background(w, h, theme); break;
-        case 13: this.drawLevel13Background(w, h, theme); break;
-        case 14: this.drawLevel14Background(w, h, theme); break;
-        case 15: this.drawLevel15Background(w, h, theme); break;
-        case 16: this.drawLevel16Background(w, h, theme); break;
-        case 17: this.drawLevel17Background(w, h, theme); break;
-        case 18: this.drawLevel18Background(w, h, theme); break;
-        case 19: this.drawLevel19Background(w, h, theme); break;
-        case 20: this.drawLevel20Background(w, h, theme); break;
+        case 3: this.drawLevel5Background(w, h, theme); break;
+        case 4: this.drawLevel6Background(w, h, theme); break;
+        case 5: this.drawLevel9Background(w, h, theme); break;
+        case 6: this.drawLevel10Background(w, h, theme); break;
+        case 7: this.drawLevel13Background(w, h, theme); break;
+        case 8: this.drawLevel14Background(w, h, theme); break;
+        case 9: this.drawLevel17Background(w, h, theme); break;
+        case 10: this.drawLevel20Background(w, h, theme); break;
         default: this.drawLevel1Background(w, h, theme); break;
       }
     }
@@ -7214,7 +6978,7 @@
   function nextLevel() {
     if (currentGameInstance) {
       const nextId = currentGameInstance.currentLevelId + 1;
-      if (nextId <= 20) {
+      if (nextId <= 10) {
         currentGameInstance.startLevel(nextId);
       } else {
         currentGameInstance.switchScreen('screen-level-select');
@@ -7224,7 +6988,7 @@
   }
 
   function unlockAllLevels() {
-    gameStateData.unlockedLevel = 20;
+    gameStateData.unlockedLevel = 10;
     gameStateData.allUnlockedByCheat = true;
     persistData();
     const activeWorld = document.querySelector('.world-btn.active');
@@ -7238,7 +7002,7 @@
       ? gameStateData.completedLevels
       : [];
     const maxCompleted = completedList.length > 0 ? Math.max(...completedList) : 0;
-    gameStateData.unlockedLevel = Math.max(1, Math.min(20, maxCompleted + 1));
+    gameStateData.unlockedLevel = Math.max(1, Math.min(10, maxCompleted + 1));
     gameStateData.lastPlayedLevel = Math.min(gameStateData.lastPlayedLevel || 1, gameStateData.unlockedLevel);
     persistData();
     const activeWorld = document.querySelector('.world-btn.active');
@@ -7322,13 +7086,13 @@
     // Update campaign progress in header
     const progressTextEl = document.getElementById('level-select-progress');
     if (progressTextEl) {
-      progressTextEl.textContent = `CAMPAIGN: ${completedCount}/20 CLEARED • UNLOCKED UP TO: LEVEL ${String(unlockedMax).padStart(2, '0')}`;
+      progressTextEl.textContent = `CAMPAIGN: ${completedCount}/10 CLEARED • UNLOCKED UP TO: LEVEL ${String(unlockedMax).padStart(2, '0')}`;
     }
 
     // Update world tabs indicators
     document.querySelectorAll('.world-btn').forEach(btn => {
       const w = parseInt(btn.dataset.world, 10);
-      const worldFirstLevel = (w - 1) * 4 + 1;
+      const worldFirstLevel = (w - 1) * 2 + 1;
       const isWorldUnlocked = unlockedMax >= worldFirstLevel;
       btn.classList.toggle('world-locked', !isWorldUnlocked);
     });
@@ -7425,7 +7189,7 @@
     document.getElementById('btn-menu-level-select').addEventListener('click', () => {
       sound.playClick();
       const currentLevel = gameStateData.lastPlayedLevel || 1;
-      const targetWorld = Math.ceil(currentLevel / 4);
+      const targetWorld = Math.ceil(currentLevel / 2);
       document.querySelectorAll('.world-btn').forEach(btn => {
         btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === targetWorld);
       });
@@ -7504,10 +7268,10 @@
     const errPlayerName = document.getElementById('player-name-error');
     if (inputPlayerName) {
       inputPlayerName.addEventListener('input', () => {
-        const val = inputPlayerName.value.trim();
+        const val = inputPlayerName.value.trim().toUpperCase();
         if (val && checkPlayerNameExisted(val)) {
           if (errPlayerName) {
-            errPlayerName.textContent = 'name is existed';
+            errPlayerName.textContent = 'Name is reserved for AI champion';
             errPlayerName.classList.remove('hidden');
           }
           inputPlayerName.classList.add('has-error');
@@ -7663,7 +7427,7 @@
 
     document.getElementById('btn-pause-level-select').addEventListener('click', () => {
       sound.playClick();
-      const currentWorld = Math.ceil(((game.currentLevelId) || 1) / 4);
+      const currentWorld = Math.ceil(((game.currentLevelId) || 1) / 2);
       document.querySelectorAll('.world-btn').forEach(btn => {
         btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === currentWorld);
       });
@@ -7690,8 +7454,8 @@
 
     document.getElementById('btn-complete-level-select').addEventListener('click', () => {
       sound.playClick();
-      const nextLvl = Math.min(20, ((game.currentLevelId) || 1) + 1);
-      const targetWorld = Math.ceil(nextLvl / 4);
+      const nextLvl = Math.min(10, ((game.currentLevelId) || 1) + 1);
+      const targetWorld = Math.ceil(nextLvl / 2);
       document.querySelectorAll('.world-btn').forEach(btn => {
         btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === targetWorld);
       });
@@ -7717,9 +7481,18 @@
       restartLevel(false);
     });
 
+    const btnFailedLeaderboard = document.getElementById('btn-failed-leaderboard');
+    if (btnFailedLeaderboard) {
+      btnFailedLeaderboard.addEventListener('click', () => {
+        sound.playClick();
+        renderLeaderboard();
+        game.switchScreen('screen-leaderboard');
+      });
+    }
+
     document.getElementById('btn-failed-level-select').addEventListener('click', () => {
       sound.playClick();
-      const currentWorld = Math.ceil(((game.currentLevelId) || 1) / 4);
+      const currentWorld = Math.ceil(((game.currentLevelId) || 1) / 2);
       document.querySelectorAll('.world-btn').forEach(btn => {
         btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === currentWorld);
       });
@@ -7839,7 +7612,7 @@
       btnSettingsUnlock.addEventListener('click', () => {
         sound.playClick();
         unlockAllLevels();
-        alert('All 20 levels across all 5 worlds are unlocked!');
+        alert('All 10 levels across all 5 chapters are unlocked!');
       });
     }
 
@@ -7853,14 +7626,25 @@
     }
 
     document.getElementById('btn-reset-records').addEventListener('click', () => {
-      if (confirm('Reset campaign progress? This will lock levels 2-20 and reset your coin records.')) {
+      if (confirm('Reset campaign progress? This will lock levels 2-10 and reset your coin records.')) {
         localStorage.removeItem(STORAGE_KEY);
         loadSavedData();
+        // Reset player active record on leaderboard
+        const pName = (gameStateData.playerName || 'SHADOW').trim().toUpperCase();
+        const list = getLeaderboardData();
+        const pIdx = list.findIndex(e => (e.name || '').trim().toUpperCase() === pName);
+        if (pIdx >= 0) {
+          list[pIdx].score = 0;
+          list[pIdx].levels = 0;
+          list[pIdx].coins = 0;
+          saveLeaderboardData(list);
+        }
+        syncCurrentPlayerToLeaderboard();
         updatePlayerSpeedFromSettings();
         updatePlayerNameUI();
         if (setPlayerSpeedEl) setPlayerSpeedEl.value = gameStateData.settings.playerSpeed || 'normal';
         renderLevelSelectGrid(1);
-        alert('Progress reset! Level 1 is ready, and levels 2-20 are locked.');
+        alert('Progress reset! Level 1 is ready, and levels 2-10 are locked.');
       }
     });
 
