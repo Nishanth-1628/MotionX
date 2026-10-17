@@ -2053,3 +2053,98 @@ kbd {
     font-size: 12px;
   }
 }
+
+/* ========================================================
+   HARDWARE PERFORMANCE & LOW-PROCESSOR OPTIMIZATIONS
+   ======================================================== */
+.hud-fps-pill {
+  font-family: var(--font-pixel, monospace);
+  font-size: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 4px);
+  background: rgba(4, 9, 22, 0.9);
+  border: 1px solid var(--accent-green, #00ff88);
+  color: var(--accent-green, #00ff88);
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hud-fps-pill.fps-good {
+  border-color: #00ff88;
+  color: #00ff88;
+}
+
+.hud-fps-pill.fps-fair {
+  border-color: #ffaa00;
+  color: #ffaa00;
+}
+
+.hud-fps-pill.fps-poor {
+  border-color: #ff0055;
+  color: #ff0055;
+}
+
+.perf-highlight-row {
+  border-left: 3px solid var(--primary-cyan) !important;
+  background: rgba(0, 240, 255, 0.06) !important;
+  padding: 10px 12px !important;
+  border-radius: 6px !important;
+  margin-bottom: 8px !important;
+}
+
+/* Low-Spec Laptop Optimization Class: Removes all GPU composite blur stalls */
+body.perf-mode * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.perf-mode .camera-panel,
+body.perf-mode .screen-overlay,
+body.perf-mode .modal-card,
+body.perf-mode .hud-card,
+body.perf-mode .hud-level-badge,
+body.perf-mode .two-hand-status-box {
+  background: rgba(6, 11, 25, 0.96) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8) !important;
+}
+
+body.perf-mode .cyber-btn {
+  box-shadow: none !important;
+}
+
+body.perf-mode .cyber-btn:hover {
+  box-shadow: 0 0 6px var(--primary-cyan) !important;
+}
+
+/* Performance Notification Toast */
+.perf-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(6, 12, 28, 0.95);
+  border: 1px solid var(--primary-cyan);
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-family: var(--font-pixel, monospace);
+  font-size: 9px;
+  letter-spacing: 1px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  z-index: 9999;
+  pointer-events: none;
+  animation: perfToastFade 3.5s forwards ease-in-out;
+}
+
+@keyframes perfToastFade {
+  0% { opacity: 0; transform: translate(-50%, 15px); }
+  15% { opacity: 1; transform: translate(-50%, 0); }
+  80% { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -15px); }
+}
+
