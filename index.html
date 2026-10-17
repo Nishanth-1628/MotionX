@@ -76,6 +76,7 @@
 
         <!-- Top-Right: Action Buttons -->
         <div class="hud-actions">
+          <div id="hud-fps-pill" class="hud-fps-pill" title="Hardware Performance: Click to configure">⚡ 60 FPS</div>
           <button id="btn-toggle-camera" class="hud-btn" title="Toggle Camera Preview" aria-label="Toggle Camera">📷 CAM</button>
           <button id="btn-restart-attempt" class="hud-btn" title="Restart Level" aria-label="Restart Level">🔄 RETRY</button>
           <button id="btn-pause-game" class="hud-btn" title="Pause Game" aria-label="Pause Game">⏸ PAUSE</button>
@@ -420,6 +421,72 @@
         <h2 class="modal-title">SETTINGS</h2>
 
         <div class="settings-scroll-list">
+          <!-- ⚡ HARDWARE PERFORMANCE & LOW-PROCESSOR LAPTOP PRESET -->
+          <div class="setting-row perf-highlight-row">
+            <div class="setting-meta">
+              <strong>⚡ PERFORMANCE PRESET (HARDWARE SCALING)</strong>
+              <small>Optimizes AI hand tracking & graphics for low processor / integrated GPU laptops</small>
+            </div>
+            <select id="set-perf-profile" class="cyber-input-select">
+              <option value="low_spec" selected>⚡ LOW-PROCESSOR LAPTOP (MAX 60 FPS)</option>
+              <option value="balanced">⚖️ BALANCED (STANDARD LAPTOP)</option>
+              <option value="high">✨ HIGH / ULTRA (DEDICATED GPU)</option>
+              <option value="cv_only">🚀 ULTRA-FAST CV (ZERO AI / ANCIENT LAPTOP)</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-meta">
+              <strong>CAMERA TRACKING ENGINE</strong>
+              <small>MediaPipe AI Lite (Recommended) or Zero-CPU Direct Color CV</small>
+            </div>
+            <select id="set-camera-engine" class="cyber-input-select">
+              <option value="mediapipe" selected>MEDIAPIPE AI (LITE WASM)</option>
+              <option value="cv">DIRECT COLOR CV (ZERO AI / ULTRA FAST)</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-meta">
+              <strong>CAMERA AI TRACKING RATE</strong>
+              <small>Lower FPS saves massive CPU cycles while maintaining instant gesture response</small>
+            </div>
+            <select id="set-camera-fps" class="cyber-input-select">
+              <option value="18">18 FPS (LOW-END LAPTOP - ULTRA LIGHT)</option>
+              <option value="20" selected>20 FPS (RECOMMENDED 60 FPS)</option>
+              <option value="25">25 FPS (BALANCED)</option>
+              <option value="30">30 FPS (HIGH SPEC)</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-meta">
+              <strong>CANVAS GLOW & SHADOWS</strong>
+              <small>Disable Gaussian blur shadows to free up CPU / integrated GPU fillrate</small>
+            </div>
+            <button id="toggle-shadows" class="toggle-pill">OFF</button>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-meta">
+              <strong>PARTICLE BUDGET</strong>
+              <small>Scale explosion and confetti particles for zero stutter</small>
+            </div>
+            <select id="set-particles" class="cyber-input-select">
+              <option value="low" selected>LOW (15 PARTICLES - SMOOTH)</option>
+              <option value="medium">MEDIUM (30 PARTICLES)</option>
+              <option value="high">HIGH (50 PARTICLES)</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-meta">
+              <strong>SHOW LIVE FPS & LATENCY HUD</strong>
+              <small>Display real-time FPS and AI processing time in-game</small>
+            </div>
+            <button id="toggle-fps-hud" class="toggle-pill active">ON</button>
+          </div>
+
           <div class="setting-row">
             <div class="setting-meta">
               <strong>CONTROL MODE</strong>
