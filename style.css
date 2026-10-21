@@ -2148,3 +2148,118 @@ body.perf-mode .cyber-btn:hover {
   100% { opacity: 0; transform: translate(-50%, -15px); }
 }
 
+/* =========================================================================
+   LOW-RAM LAPTOP COMPATIBILITY (2GB - 4GB RAM)
+   ========================================================================= */
+
+#game-canvas {
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Main Menu Low-RAM Quick Bar */
+.menu-low-ram-bar {
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.low-ram-pill-btn {
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid var(--primary-cyan);
+  color: #c9e6ff;
+  font-family: var(--font-pixel, monospace);
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.low-ram-pill-btn:hover {
+  background: rgba(0, 240, 255, 0.18);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+  color: #ffffff;
+}
+
+.low-ram-pill-btn.active {
+  background: rgba(0, 255, 136, 0.12);
+  border-color: #00ff88;
+  color: #00ff88;
+}
+
+/* Low-RAM Banner in Permission Modal */
+.low-ram-quick-banner {
+  margin: 12px 0 16px 0;
+  padding: 12px 14px;
+  background: rgba(0, 240, 255, 0.05);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  border-left: 3px solid var(--primary-cyan);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.low-ram-quick-banner .low-ram-badge {
+  font-family: var(--font-pixel, monospace);
+  font-size: 9px;
+  color: var(--primary-cyan);
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+
+.low-ram-quick-banner .low-ram-desc {
+  font-size: 11px;
+  color: #b0cce8;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+
+.low-ram-btn-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.low-ram-btn-grid .cyber-btn {
+  flex: 1 1 180px;
+  font-size: 10px;
+  padding: 9px 12px;
+}
+
+/* Cyber Button Accent (Orange/Gold for Quick Optimization) */
+.cyber-btn-accent {
+  background: linear-gradient(135deg, rgba(255, 170, 0, 0.2), rgba(255, 90, 0, 0.3)) !important;
+  border-color: #ffaa00 !important;
+  color: #ffdd66 !important;
+  text-shadow: 0 0 6px rgba(255, 170, 0, 0.6) !important;
+}
+
+.cyber-btn-accent:hover {
+  background: linear-gradient(135deg, rgba(255, 170, 0, 0.35), rgba(255, 90, 0, 0.45)) !important;
+  box-shadow: 0 0 14px rgba(255, 170, 0, 0.5) !important;
+  color: #ffffff !important;
+}
+
+/* Low-RAM Mode System Class - Strip all composite stalls, shadows & glows */
+body.low-ram-mode * {
+  text-shadow: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+body.low-ram-mode .bg-watermark-motionx {
+  opacity: 0.02 !important;
+}
+
+body.low-ram-mode .cam-preview-box canvas {
+  border-radius: 0 !important;
+}
+
+
