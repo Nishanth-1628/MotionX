@@ -93,8 +93,8 @@
         <div class="cam-preview-box">
           <video id="webcam-video" playsinline muted autoplay></video>
           <canvas id="camera-overlay-canvas"></canvas>
-          <div id="cam-hand-reticle-left" class="cam-hand-reticle reticle-left">✊</div>
-          <div id="cam-hand-reticle-right" class="cam-hand-reticle reticle-right">👉</div>
+          <div id="cam-hand-reticle-left" class="cam-hand-reticle reticle-left hidden">✊</div>
+          <div id="cam-hand-reticle-right" class="cam-hand-reticle reticle-right hidden">👉</div>
           <div id="cam-hand-reticle" class="cam-hand-reticle hidden">✋</div>
         </div>
 
@@ -231,6 +231,13 @@
           <button id="btn-menu-change-pilot" class="btn-inline-pill" type="button">EDIT NAME</button>
         </div>
 
+        <div class="menu-low-ram-bar">
+          <button id="btn-quick-toggle-low-ram" class="low-ram-pill-btn" type="button" title="Click to toggle Low-RAM Laptop Compatibility">
+            <span class="pill-dot">⚡</span>
+            <span id="menu-low-ram-text">PERF MODE: AUTO (HIGH &amp; LOW LAPTOPS • 60 FPS)</span>
+          </button>
+        </div>
+
         <div class="menu-action-buttons">
           <button id="btn-menu-enable-camera" class="cyber-btn btn-hero">
             <span class="btn-icon">📷</span>
@@ -295,8 +302,21 @@
         </div>
 
         <div class="modal-btn-stack">
-          <button id="btn-request-cam-permit" class="cyber-btn cyber-btn-primary">ENABLE CAMERA</button>
-          <button id="btn-fallback-to-touch" class="cyber-btn cyber-btn-secondary">TOUCH CONTROL</button>
+          <button id="btn-request-cam-permit" class="cyber-btn cyber-btn-primary">🎮 START CAMERA (UNIVERSAL AUTO • 60 FPS)</button>
+          <button id="btn-fallback-to-touch" class="cyber-btn cyber-btn-secondary">TOUCH / KEYBOARD CONTROL</button>
+        </div>
+
+        <!-- LOW-RAM COMPATIBILITY SECTION -->
+        <div class="low-ram-quick-banner" id="low-ram-quick-banner">
+          <div class="low-ram-badge">⚡ LOW-RAM LAPTOP COMPATIBILITY (2GB - 4GB)</div>
+          <div class="low-ram-desc">Default Auto mode is already optimized for 60 FPS on all laptops. If you have extreme 2GB RAM limits:</div>
+          <div class="low-ram-btn-grid">
+            <button id="btn-start-low-ram-ai" class="cyber-btn cyber-btn-secondary" type="button">🤖 START LITE AI (2 HANDS)</button>
+            <button id="btn-start-low-ram-cv" class="cyber-btn cyber-btn-accent" type="button">⚡ START ULTRA LOW-RAM (2 HANDS)</button>
+          </div>
+        </div>
+
+        <div class="modal-btn-stack" style="margin-top: 8px;">
           <button id="btn-perm-back-menu" class="cyber-btn cyber-btn-ghost">BACK TO MENU</button>
         </div>
       </div>
@@ -425,24 +445,57 @@
           <div class="setting-row perf-highlight-row">
             <div class="setting-meta">
               <strong>⚡ PERFORMANCE PRESET (HARDWARE SCALING)</strong>
-              <small>Optimizes AI hand tracking & graphics for low processor / integrated GPU laptops</small>
+              <small>Optimizes AI hand tracking & graphics for low RAM & integrated GPU laptops</small>
             </div>
             <select id="set-perf-profile" class="cyber-input-select">
-              <option value="low_spec" selected>⚡ LOW-PROCESSOR LAPTOP (MAX 60 FPS)</option>
+              <option value="auto" selected>⚡ UNIVERSAL AUTO (HIGH &amp; LOW LAPTOPS • 60 FPS)</option>
+              <option value="low_ram">🚀 LOW-RAM LAPTOP (2GB - 4GB RAM • ZERO LAG)</option>
+              <option value="low_spec">⚡ LOW-PROCESSOR LAPTOP (MAX 60 FPS)</option>
               <option value="balanced">⚖️ BALANCED (STANDARD LAPTOP)</option>
               <option value="high">✨ HIGH / ULTRA (DEDICATED GPU)</option>
               <option value="cv_only">🚀 ULTRA-FAST CV (ZERO AI / ANCIENT LAPTOP)</option>
             </select>
           </div>
 
+          <!-- 1-CLICK QUICK OPTIMIZE BUTTON -->
+          <div class="setting-row" style="background: rgba(0, 240, 255, 0.08); border: 1px dashed var(--primary-cyan); border-radius: 6px; padding: 10px;">
+            <div class="setting-meta">
+              <strong>⚡ ONE-CLICK LOW-RAM AUTO-SETUP</strong>
+              <small>Instantly applies zero-WASM CV, single-hand tracking, and 75% resolution scaling</small>
+            </div>
+            <button id="btn-quick-optimize-low-ram" class="cyber-btn cyber-btn-accent" type="button" style="padding: 6px 14px; font-size: 11px;">OPTIMIZE NOW</button>
+          </div>
+
           <div class="setting-row">
             <div class="setting-meta">
               <strong>CAMERA TRACKING ENGINE</strong>
-              <small>MediaPipe AI Lite (Recommended) or Zero-CPU Direct Color CV</small>
+              <small>MediaPipe AI Lite (Universal 60 FPS • 100% Genuine Hands Only)</small>
             </div>
             <select id="set-camera-engine" class="cyber-input-select">
-              <option value="mediapipe" selected>MEDIAPIPE AI (LITE WASM)</option>
-              <option value="cv">DIRECT COLOR CV (ZERO AI / ULTRA FAST)</option>
+              <option value="mediapipe" selected>🤖 MEDIAPIPE LITE AI (HIGH ACCURACY • HANDS ONLY)</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-meta">
+              <strong>AI TRACKING HANDS</strong>
+              <small>Dual-hand tracking enables simultaneous movement (Right) and attack/jump (Left)</small>
+            </div>
+            <select id="set-tracking-hands" class="cyber-input-select">
+              <option value="2" selected>2 HANDS (DUAL-HAND CONTROL • DEFAULT)</option>
+              <option value="1">1 HAND (SINGLE-HAND CONTROL)</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-meta">
+              <strong>GAME RENDER RESOLUTION</strong>
+              <small>Scaling down internal canvas cuts framebuffer VRAM and integrated GPU fillrate by up to 50%</small>
+            </div>
+            <select id="set-render-scale" class="cyber-input-select">
+              <option value="0.75" selected>75% SCALE (LOW-RAM LAPTOP - FAST)</option>
+              <option value="0.85">85% SCALE (BALANCED)</option>
+              <option value="1.0">100% SCALE (NATIVE RESOLUTION)</option>
             </select>
           </div>
 
@@ -452,7 +505,7 @@
               <small>Lower FPS saves massive CPU cycles while maintaining instant gesture response</small>
             </div>
             <select id="set-camera-fps" class="cyber-input-select">
-              <option value="18">18 FPS (LOW-END LAPTOP - ULTRA LIGHT)</option>
+              <option value="15">15 FPS (LOW-RAM LAPTOP - ULTRA LIGHT)</option>
               <option value="20" selected>20 FPS (RECOMMENDED 60 FPS)</option>
               <option value="25">25 FPS (BALANCED)</option>
               <option value="30">30 FPS (HIGH SPEC)</option>
