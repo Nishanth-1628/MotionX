@@ -1,21 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>MotionX - Real-Time Camera Hand-Controlled Game</title>
-  <meta name="description" content="MotionX: A real-time camera hand-controlled 2D pixel-art platformer built purely with HTML, CSS, and JavaScript.">
-  
+  <meta name="description"
+    content="MotionX: A real-time camera hand-controlled 2D pixel-art platformer built purely with HTML, CSS, and JavaScript.">
+
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Press+Start+2P&family=Rajdhani:wght@600;700;800&display=swap" rel="stylesheet">
-  
+  <link
+    href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Press+Start+2P&family=Rajdhani:wght@600;700;800&display=swap"
+    rel="stylesheet">
+
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
   <div id="game-app" class="game-app">
-    
+
     <!-- MAIN GAMEPLAY AREA -->
     <main id="game-area-container" class="game-area-container">
       <!-- AMBIENT BACKGROUND WATERMARK -->
@@ -76,9 +82,10 @@
 
         <!-- Top-Right: Action Buttons -->
         <div class="hud-actions">
-          <div id="hud-fps-pill" class="hud-fps-pill" title="Hardware Performance: Click to configure">⚡ 60 FPS</div>
-          <button id="btn-toggle-camera" class="hud-btn" title="Toggle Camera Preview" aria-label="Toggle Camera">📷 CAM</button>
-          <button id="btn-restart-attempt" class="hud-btn" title="Restart Level" aria-label="Restart Level">🔄 RETRY</button>
+          <button id="btn-toggle-camera" class="hud-btn" title="Toggle Camera Preview" aria-label="Toggle Camera">📷
+            CAM</button>
+          <button id="btn-restart-attempt" class="hud-btn" title="Restart Level" aria-label="Restart Level">🔄
+            RETRY</button>
           <button id="btn-pause-game" class="hud-btn" title="Pause Game" aria-label="Pause Game">⏸ PAUSE</button>
         </div>
       </header>
@@ -89,7 +96,7 @@
           <span class="cam-title">📷 DUAL-HAND CAMERA PREVIEW</span>
           <span id="cam-tracking-badge" class="cam-badge badge-searching">SEARCHING</span>
         </div>
-        
+
         <div class="cam-preview-box">
           <video id="webcam-video" playsinline muted autoplay></video>
           <canvas id="camera-overlay-canvas"></canvas>
@@ -232,9 +239,10 @@
         </div>
 
         <div class="menu-low-ram-bar">
-          <button id="btn-quick-toggle-low-ram" class="low-ram-pill-btn" type="button" title="Click to toggle Low-RAM Laptop Compatibility">
+          <button id="btn-quick-toggle-low-ram" class="low-ram-pill-btn" type="button"
+            title="Click to toggle Low-RAM Laptop Compatibility">
             <span class="pill-dot">⚡</span>
-            
+
           </button>
         </div>
 
@@ -294,7 +302,8 @@
 
         <div class="privacy-notice-box">
           <strong>🔒 100% Client-Side Privacy:</strong>
-          Camera feed is processed strictly inside your local browser. No video is recorded, saved, or uploaded to any server.
+          Camera feed is processed strictly inside your local browser. No video is recorded, saved, or uploaded to any
+          server.
         </div>
 
         <div id="cam-denied-error-box" class="error-banner hidden">
@@ -302,17 +311,21 @@
         </div>
 
         <div class="modal-btn-stack">
-          <button id="btn-request-cam-permit" class="cyber-btn cyber-btn-primary">🎮 START CAMERA (UNIVERSAL AUTO • 60 FPS)</button>
+          <button id="btn-request-cam-permit" class="cyber-btn cyber-btn-primary">🎮 START CAMERA (UNIVERSAL
+            AUTO)</button>
           <button id="btn-fallback-to-touch" class="cyber-btn cyber-btn-secondary">TOUCH / KEYBOARD CONTROL</button>
         </div>
 
         <!-- LOW-RAM COMPATIBILITY SECTION -->
         <div class="low-ram-quick-banner" id="low-ram-quick-banner">
           <div class="low-ram-badge">⚡ LOW-RAM LAPTOP COMPATIBILITY (2GB - 4GB)</div>
-          <div class="low-ram-desc">Default Auto mode is already optimized for 60 FPS on all laptops. If you have extreme 2GB RAM limits:</div>
+          <div class="low-ram-desc">Default Auto mode is already optimized for smooth performance on all laptops. If you
+            have extreme 2GB RAM limits:</div>
           <div class="low-ram-btn-grid">
-            <button id="btn-start-low-ram-ai" class="cyber-btn cyber-btn-secondary" type="button">🤖 START LITE AI (2 HANDS)</button>
-            <button id="btn-start-low-ram-cv" class="cyber-btn cyber-btn-accent" type="button">⚡ START ULTRA LOW-RAM (2 HANDS)</button>
+            <button id="btn-start-low-ram-ai" class="cyber-btn cyber-btn-secondary" type="button">🤖 START LITE AI (2
+              HANDS)</button>
+            <button id="btn-start-low-ram-cv" class="cyber-btn cyber-btn-accent" type="button">⚡ START ULTRA LOW-RAM (2
+              HANDS)</button>
           </div>
         </div>
 
@@ -328,7 +341,8 @@
         <div class="card-top-row">
           <div>
             <h2 class="modal-title">MISSION ARCHIVE (10 LEVELS)</h2>
-            <div id="level-select-progress" class="level-select-progress">PROGRESS: 0/10 CLEARED • UNLOCKED: LEVEL 01</div>
+            <div id="level-select-progress" class="level-select-progress">PROGRESS: 0/10 CLEARED • UNLOCKED: LEVEL 01
+            </div>
           </div>
           <div class="world-tab-group" id="world-tab-group">
             <button class="world-btn active" data-world="1">🏙️ CH 1: CITY</button>
@@ -347,7 +361,8 @@
 
         <div class="modal-btn-row">
           <button id="btn-level-select-back" class="cyber-btn cyber-btn-primary">BACK TO MENU</button>
-          <button id="btn-relock-levels" class="cyber-btn cyber-btn-secondary" title="Relock levels to match actual completed missions">🔒 RELOCK MISSIONS</button>
+          <button id="btn-relock-levels" class="cyber-btn cyber-btn-secondary"
+            title="Relock levels to match actual completed missions">🔒 RELOCK MISSIONS</button>
           <button id="btn-unlock-all-levels" class="cyber-btn cyber-btn-ghost hidden">⚡ UNLOCK ALL (DEV)</button>
         </div>
       </div>
@@ -448,9 +463,9 @@
               <small>Optimizes AI hand tracking & graphics for low RAM & integrated GPU laptops</small>
             </div>
             <select id="set-perf-profile" class="cyber-input-select">
-              <option value="auto" selected>⚡ UNIVERSAL AUTO (HIGH &amp; LOW LAPTOPS • 60 FPS)</option>
+              <option value="auto" selected>⚡ UNIVERSAL AUTO (HIGH &amp; LOW LAPTOPS)</option>
               <option value="low_ram">🚀 LOW-RAM LAPTOP (2GB - 4GB RAM • ZERO LAG)</option>
-              <option value="low_spec">⚡ LOW-PROCESSOR LAPTOP (MAX 60 FPS)</option>
+              <option value="low_spec">⚡ LOW-PROCESSOR LAPTOP</option>
               <option value="balanced">⚖️ BALANCED (STANDARD LAPTOP)</option>
               <option value="high">✨ HIGH / ULTRA (DEDICATED GPU)</option>
               <option value="cv_only">🚀 ULTRA-FAST CV (ZERO AI / ANCIENT LAPTOP)</option>
@@ -458,18 +473,20 @@
           </div>
 
           <!-- 1-CLICK QUICK OPTIMIZE BUTTON -->
-          <div class="setting-row" style="background: rgba(0, 240, 255, 0.08); border: 1px dashed var(--primary-cyan); border-radius: 6px; padding: 10px;">
+          <div class="setting-row"
+            style="background: rgba(0, 240, 255, 0.08); border: 1px dashed var(--primary-cyan); border-radius: 6px; padding: 10px;">
             <div class="setting-meta">
               <strong>⚡ ONE-CLICK LOW-RAM AUTO-SETUP</strong>
               <small>Instantly applies zero-WASM CV, single-hand tracking, and 75% resolution scaling</small>
             </div>
-            <button id="btn-quick-optimize-low-ram" class="cyber-btn cyber-btn-accent" type="button" style="padding: 6px 14px; font-size: 11px;">OPTIMIZE NOW</button>
+            <button id="btn-quick-optimize-low-ram" class="cyber-btn cyber-btn-accent" type="button"
+              style="padding: 6px 14px; font-size: 11px;">OPTIMIZE NOW</button>
           </div>
 
           <div class="setting-row">
             <div class="setting-meta">
               <strong>CAMERA TRACKING ENGINE</strong>
-              <small>MediaPipe AI Lite (Universal 60 FPS • 100% Genuine Hands Only)</small>
+              <small>MediaPipe AI Lite (100% Genuine Hands Only)</small>
             </div>
             <select id="set-camera-engine" class="cyber-input-select">
               <option value="mediapipe" selected>🤖 MEDIAPIPE LITE AI (HIGH ACCURACY • HANDS ONLY)</option>
@@ -501,19 +518,6 @@
 
           <div class="setting-row">
             <div class="setting-meta">
-              <strong>CAMERA AI TRACKING RATE</strong>
-              <small>Lower FPS saves massive CPU cycles while maintaining instant gesture response</small>
-            </div>
-            <select id="set-camera-fps" class="cyber-input-select">
-              <option value="15">15 FPS (LOW-RAM LAPTOP - ULTRA LIGHT)</option>
-              <option value="20" selected>20 FPS (RECOMMENDED 60 FPS)</option>
-              <option value="25">25 FPS (BALANCED)</option>
-              <option value="30">30 FPS (HIGH SPEC)</option>
-            </select>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-meta">
               <strong>CANVAS GLOW & SHADOWS</strong>
               <small>Disable Gaussian blur shadows to free up CPU / integrated GPU fillrate</small>
             </div>
@@ -530,14 +534,6 @@
               <option value="medium">MEDIUM (30 PARTICLES)</option>
               <option value="high">HIGH (50 PARTICLES)</option>
             </select>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-meta">
-              <strong>SHOW LIVE FPS & LATENCY HUD</strong>
-              <small>Display real-time FPS and AI processing time in-game</small>
-            </div>
-            <button id="toggle-fps-hud" class="toggle-pill active">ON</button>
           </div>
 
           <div class="setting-row">
@@ -613,9 +609,9 @@
               <small>Calibrate horizontal running speed for hand control</small>
             </div>
             <select id="set-player-speed" class="cyber-input-select">
-              <option value="slow">SLOW & PRECISE (5.75)</option>
-              <option value="normal" selected>NORMAL (6.60) [Default (+50% Boost)]</option>
-              <option value="fast">FAST (8.25)</option>
+              <option value="slow">SLOW & PRECISE (3.60)</option>
+              <option value="normal" selected>NORMAL (4.50) [Recommended]</option>
+              <option value="fast">FAST (5.80)</option>
             </select>
           </div>
 
@@ -664,26 +660,36 @@
         <div class="guide-scroll-list">
           <div class="guide-card">
             <h3>OBJECTIVE</h3>
-            <p>Start at the beginning, navigate platforms, avoid bottomless gaps, defeat enemies with your blade, and reach the Goal Flag!</p>
+            <p>Start at the beginning, navigate platforms, avoid bottomless gaps, defeat enemies with your blade, and
+              reach the Goal Flag!</p>
           </div>
 
           <div class="guide-card">
             <h3>3 LIVES, CHECKPOINTS & COINS</h3>
-            <p>You start each level with <strong>3 Lives (❤️❤️❤️)</strong>! Touch glowing holographic <strong>🚩 Checkpoint Beacons</strong> to save your mid-level progress. When taking damage or falling into pits, you respawn safely at your active checkpoint with temporary force-shields while preserving all collected coins!</p>
+            <p>You start each level with <strong>3 Lives (❤️❤️❤️)</strong>! Touch glowing holographic <strong>🚩
+                Checkpoint Beacons</strong> to save your mid-level progress. When taking damage or falling into pits,
+              you respawn safely at your active checkpoint with temporary force-shields while preserving all collected
+              coins!</p>
           </div>
 
           <div class="guide-card">
             <h3>MOTIONX: CAMERA & DUAL-HAND MULTI-CONTROLS</h3>
             <ul>
-              <li><strong>RIGHT HAND ➜ MOVEMENT & JUMP:</strong> Point index finger (👈 Left, 👉 Right, ☝️ Jump, 👇 Down). Point diagonally ↗️ / ↖️ to <strong>Run and Jump simultaneously</strong>!</li>
-              <li><strong>LEFT HAND ➜ ATTACK & SECONDARY JUMP:</strong> Make a closed fist ✊ to Attack! Point index ☝️ to Jump!</li>
-              <li><strong>SIMULTANEOUS MULTI-ACTION:</strong> Run with right hand while punching or jumping with left hand, or hold keyboard keys (<kbd>A</kbd>/<kbd>D</kbd> + <kbd>W</kbd> + <kbd>SPACE</kbd>) simultaneously!</li>
+              <li><strong>RIGHT HAND ➜ MOVEMENT & JUMP:</strong> Point index finger (👈 Left, 👉 Right, ☝️ Jump, 👇
+                Down). Point diagonally ↗️ / ↖️ to <strong>Run and Jump simultaneously</strong>!</li>
+              <li><strong>LEFT HAND ➜ ATTACK & SECONDARY JUMP:</strong> Make a closed fist ✊ to Attack! Point index ☝️
+                to Jump!</li>
+              <li><strong>SIMULTANEOUS MULTI-ACTION:</strong> Run with right hand while punching or jumping with left
+                hand, or hold keyboard keys (<kbd>A</kbd>/<kbd>D</kbd> + <kbd>W</kbd> + <kbd>SPACE</kbd>)
+                simultaneously!</li>
             </ul>
           </div>
 
           <div class="guide-card">
             <h3>DESKTOP KEYBOARD CONTROLS</h3>
-            <p><kbd>W</kbd> or <kbd>▲</kbd> = Jump • <kbd>A</kbd> or <kbd>◀</kbd> = Move Left • <kbd>D</kbd> or <kbd>▶</kbd> = Move Right • <kbd>SPACE</kbd> = Attack • <kbd>R</kbd> = Restart • <kbd>ESC</kbd> = Pause</p>
+            <p><kbd>W</kbd> or <kbd>▲</kbd> = Jump • <kbd>A</kbd> or <kbd>◀</kbd> = Move Left • <kbd>D</kbd> or
+              <kbd>▶</kbd> = Move Right • <kbd>SPACE</kbd> = Attack • <kbd>R</kbd> = Restart • <kbd>ESC</kbd> = Pause
+            </p>
           </div>
         </div>
 
@@ -703,16 +709,8 @@
         <form id="form-player-name" class="player-name-form" onsubmit="return false;">
           <div class="input-field-group">
             <label for="input-player-name" class="cyber-input-label">PLAYER NAME</label>
-            <input
-              type="text"
-              id="input-player-name"
-              class="cyber-input-text"
-              placeholder="Enter name (e.g. Phoenix)"
-              maxlength="16"
-              autocomplete="off"
-              spellcheck="false"
-              required
-            />
+            <input type="text" id="input-player-name" class="cyber-input-text" placeholder="Enter name (e.g. Phoenix)"
+              maxlength="16" autocomplete="off" spellcheck="false" required />
           </div>
 
           <div id="player-name-error" class="player-name-error hidden" role="alert">name is existed</div>
@@ -786,4 +784,5 @@
   <!-- Pure Vanilla JavaScript Entry -->
   <script src="script.js"></script>
 </body>
+
 </html>
