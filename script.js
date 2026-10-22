@@ -24,7 +24,7 @@
     fistAttackEnabled: true,
     deadZone: 'medium',    // 'low' (0.35-0.65), 'medium' (0.40-0.60), 'high' (0.30-0.70)
     smoothing: 'medium',   // 'low' (0.55), 'medium' (0.35), 'high' (0.20)
-    playerSpeed: 'normal', // 'slow' (5.75), 'normal' (6.60), 'fast' (8.25)
+    playerSpeed: 'normal', // 'slow' (3.60), 'normal' (4.50), 'fast' (5.80)
     music: true,
     sfx: true,
     // --- ⚡ UNIVERSAL DEFAULT: WORKS OUT-OF-THE-BOX ON HIGH & LOW LAPTOPS ---
@@ -32,11 +32,9 @@
     cameraEngine: 'mediapipe', // MediaPipe Lite 0 (ultra-fast, ~35MB RAM, smooth 60 FPS everywhere)
     trackingHands: 2,      // Dual & single hand both work seamlessly
     renderScale: 0.85,     // 30% GPU/VRAM savings, crisp pixel-art, 60 FPS on integrated Intel GPUs
-    cameraFps: 20,         // Crisp 50ms sensing cycle, low CPU consumption (~10%)
     modelComplexity: 0,    // 0: Lite (fastest)
     shadows: false,        // 0 blur passes (massive performance boost)
-    particleBudget: 'low', // 8 particles max, zero lag
-    showFps: true          // Live FPS on HUD
+    particleBudget: 'low'  // 8 particles max, zero lag
   };
 
   // Canvas shadowBlur patch: completely bypasses expensive Gaussian blur passes on CPU/integrated GPU
@@ -82,7 +80,6 @@
       gameStateData.settings.trackingHands = 2;
       gameStateData.settings.renderScale = 0.85;
       gameStateData.settings.modelComplexity = 0;
-      gameStateData.settings.cameraFps = 20;
       gameStateData.settings.shadows = false;
       gameStateData.settings.particleBudget = 'low';
     } else if (profile === 'low_ram' || profile === 'cv_only') {
@@ -90,7 +87,6 @@
       gameStateData.settings.cameraEngine = 'mediapipe'; // MediaPipe Lite AI (Hands only)
       gameStateData.settings.trackingHands = 2; // Always enable 2 hands
       gameStateData.settings.renderScale = 0.75;
-      gameStateData.settings.cameraFps = 20;
       gameStateData.settings.shadows = false;
       gameStateData.settings.particleBudget = 'low';
       gameStateData.settings.modelComplexity = 0;
@@ -100,7 +96,6 @@
       gameStateData.settings.trackingHands = 2; // Always enable 2 hands
       gameStateData.settings.renderScale = 0.80;
       gameStateData.settings.modelComplexity = 0; // Lite model
-      gameStateData.settings.cameraFps = 20;      // 20 FPS AI inference
       gameStateData.settings.shadows = false;     // Zero canvas shadow blur
       gameStateData.settings.particleBudget = 'low';
     } else if (profile === 'balanced') {
@@ -109,7 +104,6 @@
       gameStateData.settings.trackingHands = 2;
       gameStateData.settings.renderScale = 0.85;
       gameStateData.settings.modelComplexity = 0;
-      gameStateData.settings.cameraFps = 20;
       gameStateData.settings.shadows = false;
       gameStateData.settings.particleBudget = 'low';
     } else if (profile === 'high') {
@@ -118,7 +112,6 @@
       gameStateData.settings.trackingHands = 2;
       gameStateData.settings.renderScale = 1.0;
       gameStateData.settings.modelComplexity = 1; // Full model
-      gameStateData.settings.cameraFps = 30;
       gameStateData.settings.shadows = true;
       gameStateData.settings.particleBudget = 'medium';
     }
@@ -185,9 +178,6 @@
     const setRenderScaleEl = document.getElementById('set-render-scale');
     if (setRenderScaleEl) setRenderScaleEl.value = String(s.renderScale || 0.85);
 
-    const setFpsEl = document.getElementById('set-camera-fps');
-    if (setFpsEl) setFpsEl.value = String(s.cameraFps || 20);
-
     const toggleShadowsBtn = document.getElementById('toggle-shadows');
     if (toggleShadowsBtn) {
       const isShad = s.shadows === true;
@@ -198,19 +188,12 @@
     const setParticlesEl = document.getElementById('set-particles');
     if (setParticlesEl) setParticlesEl.value = s.particleBudget || 'low';
 
-    const toggleFpsBtn = document.getElementById('toggle-fps-hud');
-    if (toggleFpsBtn) {
-      const isFps = s.showFps !== false;
-      toggleFpsBtn.classList.toggle('active', isFps);
-      toggleFpsBtn.textContent = isFps ? 'ON' : 'OFF';
-    }
-
     // Main Menu Performance Pill
     const menuLowRamText = document.getElementById('menu-low-ram-text');
     const menuLowRamBtn = document.getElementById('btn-quick-toggle-low-ram');
     if (menuLowRamText && menuLowRamBtn) {
       const isLowRam = s.perfProfile === 'low_ram' || s.cameraEngine === 'cv';
-      menuLowRamText.textContent = isLowRam ? 'PERF MODE: LOW-RAM CV' : 'PERF MODE: AUTO (60 FPS)';
+      menuLowRamText.textContent = isLowRam ? 'PERF MODE: LOW-RAM CV' : 'PERF MODE: AUTO';
       menuLowRamBtn.classList.toggle('active', isLowRam);
     }
   }
@@ -1550,7 +1533,7 @@
   // =========================================================================
   // 4. REAL-TIME CAMERA HAND GESTURE CONTROL ENGINE
   // =========================================================================
-  let PLAYER_SPEED = 6.60; // 50% Boosted High-Speed Velocity (4.40 * 1.50 = 6.60)
+  let PLAYER_SPEED = 4.50; // Calibrated smooth & controllable velocity
   const JUMP_FORCE = 15.5; // High-velocity turbo jump impulse (fast takeoff)
   const attackCooldown = 500; // 500ms cooldown (Section 8 & 12)
   let attackLocked = false;
@@ -1564,11 +1547,11 @@
   function updatePlayerSpeedFromSettings() {
     const spd = (gameStateData.settings && gameStateData.settings.playerSpeed) || 'normal';
     if (spd === 'slow') {
-      PLAYER_SPEED = 5.75;
+      PLAYER_SPEED = 3.60;
     } else if (spd === 'fast') {
-      PLAYER_SPEED = 8.25;
+      PLAYER_SPEED = 5.80;
     } else {
-      PLAYER_SPEED = 6.60; // 'normal' default (+50% increase)
+      PLAYER_SPEED = 4.50; // 'normal' default smooth speed
     }
   }
 
@@ -1576,11 +1559,11 @@
     if (typeof speedOrPreset === 'number') {
       PLAYER_SPEED = Math.max(1.0, Math.min(12.0, speedOrPreset));
     } else if (speedOrPreset === 'slow') {
-      PLAYER_SPEED = 5.75;
+      PLAYER_SPEED = 3.60;
     } else if (speedOrPreset === 'normal') {
-      PLAYER_SPEED = 6.60;
+      PLAYER_SPEED = 4.50;
     } else if (speedOrPreset === 'fast') {
-      PLAYER_SPEED = 8.25;
+      PLAYER_SPEED = 5.80;
     }
   }
 
@@ -1918,11 +1901,7 @@
         return;
       }
 
-      const targetFps = (gameStateData.settings && Number(gameStateData.settings.cameraFps)) || 20;
-      const minInterval = 1000 / targetFps;
-
-      if ((now - lastCameraProcessTime >= minInterval) && !isMediaPipeProcessing) {
-        lastCameraProcessTime = now;
+      if (!isMediaPipeProcessing) {
 
         if (videoEl && videoEl.readyState >= 2) {
           if (isMediaPipeReady && mediaPipeHandsInstance) {
@@ -3517,6 +3496,7 @@
       gameStateData.lastPlayedLevel = levelId;
       persistData();
       this.state = 'PLAYING';
+      this.lastTimestamp = performance.now();
       this.hasGameplayStarted = false;
       this.particles = [];
       this.shadowGhosts = [];
@@ -7140,59 +7120,20 @@
       this.lastTimestamp = t;
       this.animTime += dt;
 
-      // Real-Time Hardware Performance Monitor & FPS Sampling
-      this.fpsFrames = (this.fpsFrames || 0) + 1;
-      if (!this.lastFpsSample || (t - this.lastFpsSample) >= 500) {
-        const elapsed = t - (this.lastFpsSample || t);
-        this.measuredFps = Math.round((this.fpsFrames * 1000) / (elapsed || 1));
-        this.fpsFrames = 0;
-        this.lastFpsSample = t;
-
-        // Auto-tuning heuristic: if low FPS (< 30) persists for 3.0s during gameplay, auto-optimize
-        if (this.state === 'PLAYING') {
-          if (this.measuredFps < 30 && this.measuredFps > 0) {
-            this.lowFpsDuration = (this.lowFpsDuration || 0) + (elapsed / 1000);
-            if (this.lowFpsDuration > 3.0) {
-              if (gameStateData.settings.perfProfile !== 'low_ram') {
-                applyPerfProfile('low_ram', true);
-                this.lowFpsDuration = 0;
-              }
-            }
-          } else {
-            this.lowFpsDuration = 0;
-          }
-        }
-
-        // Update in-game HUD Performance badge
-        const fpsPill = document.getElementById('hud-fps-pill');
-        if (fpsPill) {
-          if (gameStateData.settings.showFps === false) {
-            fpsPill.style.display = 'none';
-          } else {
-            fpsPill.style.display = 'flex';
-            const aiLatency = Math.round(lastInferenceDuration || 0);
-            const fpsText = `${this.measuredFps} FPS`;
-            const aiText = (isCameraActive && aiLatency > 0) ? ` | ${aiLatency}ms` : '';
-            const engineLabel = gameStateData.settings.cameraEngine === 'cv' ? ' | CV' : (gameStateData.settings.perfProfile === 'low_ram' ? ' | LITE' : '');
-            fpsPill.textContent = `⚡ ${fpsText}${aiText}${engineLabel}`;
-            fpsPill.className = 'hud-fps-pill ' + (this.measuredFps >= 50 ? 'fps-good' : (this.measuredFps >= 32 ? 'fps-fair' : 'fps-poor'));
-          }
-        }
-      }
-
       if (this.state === 'PLAYING') {
         if (this.screenShake > 0) {
           this.screenShake -= dt * 10;
           if (this.screenShake < 0) this.screenShake = 0;
         }
-        this.updateEntities(dt);
-        this.updatePhysics(dt);
-        this.updateParticles(dt);
-        this.updateFloatingPopups(dt);
         if (this.damageFlashTimer > 0) {
           this.damageFlashTimer -= dt;
           if (this.damageFlashTimer < 0) this.damageFlashTimer = 0;
         }
+
+        this.updateEntities(dt);
+        this.updatePhysics(dt);
+        this.updateParticles(dt);
+        this.updateFloatingPopups(dt);
 
         // Camera follow
         if (this.player) {
@@ -7734,6 +7675,7 @@
     document.getElementById('btn-pause-resume').addEventListener('click', () => {
       sound.playClick();
       game.state = 'PLAYING';
+      game.lastTimestamp = performance.now();
       const worldIdx = (game.currentLevel.world || 1) - 1;
       sound.startBGM(game.currentLevel.bpm, worldIdx);
       game.switchScreen(null);
@@ -7921,14 +7863,6 @@
       });
     }
 
-    const setFpsEl = document.getElementById('set-camera-fps');
-    if (setFpsEl) {
-      setFpsEl.addEventListener('change', (e) => {
-        gameStateData.settings.cameraFps = parseInt(e.target.value, 10) || 20;
-        persistData();
-      });
-    }
-
     const toggleShadowsBtn = document.getElementById('toggle-shadows');
     if (toggleShadowsBtn) {
       toggleShadowsBtn.addEventListener('click', (e) => {
@@ -7944,29 +7878,6 @@
       setParticlesEl.addEventListener('change', (e) => {
         gameStateData.settings.particleBudget = e.target.value;
         persistData();
-      });
-    }
-
-    const toggleFpsBtn = document.getElementById('toggle-fps-hud');
-    if (toggleFpsBtn) {
-      toggleFpsBtn.addEventListener('click', (e) => {
-        const active = e.target.classList.toggle('active');
-        e.target.textContent = active ? 'ON' : 'OFF';
-        gameStateData.settings.showFps = active;
-        persistData();
-        const fpsPill = document.getElementById('hud-fps-pill');
-        if (fpsPill) fpsPill.style.display = active ? 'flex' : 'none';
-      });
-    }
-
-    const hudFpsPill = document.getElementById('hud-fps-pill');
-    if (hudFpsPill) {
-      hudFpsPill.addEventListener('click', () => {
-        sound.playClick();
-        game.state = 'PAUSED';
-        sound.stopBGM();
-        syncSettingsUI();
-        game.switchScreen('screen-settings');
       });
     }
 
