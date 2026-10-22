@@ -2058,20 +2058,7 @@ kbd {
    HARDWARE PERFORMANCE & LOW-PROCESSOR OPTIMIZATIONS
    ======================================================== */
 .hud-fps-pill {
-  font-family: var(--font-pixel, monospace);
-  font-size: 8px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm, 4px);
-  background: rgba(4, 9, 22, 0.9);
-  border: 1px solid var(--accent-green, #00ff88);
-  color: var(--accent-green, #00ff88);
-  letter-spacing: 0.5px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  user-select: none;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  display: none !important;
 }
 
 .hud-fps-pill.fps-good {
