@@ -12,10 +12,6 @@
   // =========================================================================
   const STORAGE_KEY = 'motionx_vanilla_save_v1';
 
-  function detectHardwareCapabilities() {
-    return 'auto';
-  }
-
   const defaultSettings = {
     controlMode: 'camera', // 'camera' | 'touch'
     cameraPreview: true,
@@ -24,201 +20,28 @@
     fistAttackEnabled: true,
     deadZone: 'medium',    // 'low' (0.35-0.65), 'medium' (0.40-0.60), 'high' (0.30-0.70)
     smoothing: 'medium',   // 'low' (0.55), 'medium' (0.35), 'high' (0.20)
-    playerSpeed: 'normal', // 'slow' (3.60), 'normal' (4.50), 'fast' (5.80)
+    playerSpeed: 'normal',   // 'slow' (5.75), 'normal' (6.60) [Default +50%], 'fast' (8.25)
     music: true,
-    sfx: true,
-    // --- ⚡ UNIVERSAL DEFAULT: WORKS OUT-OF-THE-BOX ON HIGH & LOW LAPTOPS ---
-    perfProfile: 'auto',   // 'auto' | 'low_ram' | 'low_spec' | 'balanced' | 'high' | 'cv_only'
-    cameraEngine: 'mediapipe', // MediaPipe Lite 0 (ultra-fast, ~35MB RAM, smooth 60 FPS everywhere)
-    trackingHands: 2,      // Dual & single hand both work seamlessly
-    renderScale: 0.85,     // 30% GPU/VRAM savings, crisp pixel-art, 60 FPS on integrated Intel GPUs
-    modelComplexity: 0,    // 0: Lite (fastest)
-    shadows: false,        // 0 blur passes (massive performance boost)
-    particleBudget: 'low'  // 8 particles max, zero lag
+    sfx: true
   };
 
-  // Canvas shadowBlur patch: completely bypasses expensive Gaussian blur passes on CPU/integrated GPU
-  try {
-    const origShadowBlur = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'shadowBlur');
-    if (origShadowBlur && origShadowBlur.set) {
-      Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
-        get: function () {
-          return origShadowBlur.get.call(this);
-        },
-        set: function (val) {
-          if (gameStateData && gameStateData.settings && gameStateData.settings.shadows === false && val > 0) {
-            origShadowBlur.set.call(this, 0);
-          } else {
-            origShadowBlur.set.call(this, val);
-          }
-        },
-        configurable: true,
-        enumerable: true
-      });
-    }
-  } catch (e) {
-    console.warn('Canvas shadowBlur patch failed:', e);
-  }
-
-  function showPerfToast(msg) {
-    const existing = document.querySelector('.perf-toast');
-    if (existing) existing.remove();
-    const toast = document.createElement('div');
-    toast.className = 'perf-toast';
-    toast.textContent = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      if (toast.parentNode) toast.parentNode.removeChild(toast);
-    }, 3600);
-  }
-
-  function applyPerfProfile(profile, notify = false) {
-    if (!gameStateData || !gameStateData.settings) return;
-    if (profile === 'auto') {
-      gameStateData.settings.perfProfile = 'auto';
-      gameStateData.settings.cameraEngine = 'mediapipe';
-      gameStateData.settings.trackingHands = 2;
-      gameStateData.settings.renderScale = 0.85;
-      gameStateData.settings.modelComplexity = 0;
-      gameStateData.settings.shadows = false;
-      gameStateData.settings.particleBudget = 'low';
-    } else if (profile === 'low_ram' || profile === 'cv_only') {
-      gameStateData.settings.perfProfile = 'low_ram';
-      gameStateData.settings.cameraEngine = 'mediapipe'; // MediaPipe Lite AI (Hands only)
-      gameStateData.settings.trackingHands = 2; // Always enable 2 hands
-      gameStateData.settings.renderScale = 0.75;
-      gameStateData.settings.shadows = false;
-      gameStateData.settings.particleBudget = 'low';
-      gameStateData.settings.modelComplexity = 0;
-    } else if (profile === 'low_spec') {
-      gameStateData.settings.perfProfile = 'low_spec';
-      gameStateData.settings.cameraEngine = 'mediapipe';
-      gameStateData.settings.trackingHands = 2; // Always enable 2 hands
-      gameStateData.settings.renderScale = 0.80;
-      gameStateData.settings.modelComplexity = 0; // Lite model
-      gameStateData.settings.shadows = false;     // Zero canvas shadow blur
-      gameStateData.settings.particleBudget = 'low';
-    } else if (profile === 'balanced') {
-      gameStateData.settings.perfProfile = 'balanced';
-      gameStateData.settings.cameraEngine = 'mediapipe';
-      gameStateData.settings.trackingHands = 2;
-      gameStateData.settings.renderScale = 0.85;
-      gameStateData.settings.modelComplexity = 0;
-      gameStateData.settings.shadows = false;
-      gameStateData.settings.particleBudget = 'low';
-    } else if (profile === 'high') {
-      gameStateData.settings.perfProfile = 'high';
-      gameStateData.settings.cameraEngine = 'mediapipe';
-      gameStateData.settings.trackingHands = 2;
-      gameStateData.settings.renderScale = 1.0;
-      gameStateData.settings.modelComplexity = 1; // Full model
-      gameStateData.settings.shadows = true;
-      gameStateData.settings.particleBudget = 'medium';
-    }
-
-    if (document.body) {
-      if (gameStateData.settings.perfProfile === 'low_ram' || gameStateData.settings.perfProfile === 'low_spec' || gameStateData.settings.perfProfile === 'cv_only') {
-        document.body.classList.add('perf-mode');
-        if (gameStateData.settings.perfProfile === 'low_ram') {
-          document.body.classList.add('low-ram-mode');
-        } else {
-          document.body.classList.remove('low-ram-mode');
-        }
-      } else {
-        document.body.classList.remove('perf-mode');
-        document.body.classList.remove('low-ram-mode');
-      }
-    }
-
-    // Trigger canvas resize to apply new renderScale immediately
-    if (currentGameInstance && typeof currentGameInstance.triggerResize === 'function') {
-      currentGameInstance.triggerResize();
-    }
-
-    if (mediaPipeHandsInstance && isMediaPipeReady) {
-      try {
-        mediaPipeHandsInstance.setOptions({
-          modelComplexity: gameStateData.settings.modelComplexity || 0,
-          maxNumHands: Number(gameStateData.settings.trackingHands) || 2,
-          minDetectionConfidence: 0.65,
-          minTrackingConfidence: 0.60
-        });
-      } catch (err) {
-        console.warn('Could not update MediaPipe options:', err);
-      }
-    }
-
-    syncSettingsUI();
-    persistData();
-
-    if (notify) {
-      const names = {
-        'low_ram': '🚀 Low-RAM Mode Active (<1MB RAM • 60 FPS)',
-        'low_spec': '⚡ Low-Spec Laptop Mode Active',
-        'balanced': '⚖️ Balanced Mode Active',
-        'high': '✨ High Quality Mode Active',
-        'cv_only': '🚀 Ultra-Fast CV Mode Active (Zero AI)'
-      };
-      showPerfToast(`${names[profile] || profile}`);
-    }
-  }
-
-  function syncSettingsUI() {
-    if (!gameStateData || !gameStateData.settings) return;
-    const s = gameStateData.settings;
-    const setPerfEl = document.getElementById('set-perf-profile');
-    if (setPerfEl) setPerfEl.value = s.perfProfile || 'auto';
-
-    const setEngineEl = document.getElementById('set-camera-engine');
-    if (setEngineEl) setEngineEl.value = s.cameraEngine || 'mediapipe';
-
-    const setTrackingHandsEl = document.getElementById('set-tracking-hands');
-    if (setTrackingHandsEl) setTrackingHandsEl.value = String(s.trackingHands || 2);
-
-    const setRenderScaleEl = document.getElementById('set-render-scale');
-    if (setRenderScaleEl) setRenderScaleEl.value = String(s.renderScale || 0.85);
-
-    const toggleShadowsBtn = document.getElementById('toggle-shadows');
-    if (toggleShadowsBtn) {
-      const isShad = s.shadows === true;
-      toggleShadowsBtn.classList.toggle('active', isShad);
-      toggleShadowsBtn.textContent = isShad ? 'ON' : 'OFF';
-    }
-
-    const setParticlesEl = document.getElementById('set-particles');
-    if (setParticlesEl) setParticlesEl.value = s.particleBudget || 'low';
-
-    // Main Menu Performance Pill
-    const menuLowRamText = document.getElementById('menu-low-ram-text');
-    const menuLowRamBtn = document.getElementById('btn-quick-toggle-low-ram');
-    if (menuLowRamText && menuLowRamBtn) {
-      const isLowRam = s.perfProfile === 'low_ram' || s.cameraEngine === 'cv';
-      menuLowRamText.textContent = isLowRam ? 'PERF MODE: LOW-RAM CV' : 'PERF MODE: AUTO';
-      menuLowRamBtn.classList.toggle('active', isLowRam);
-    }
-  }
-
-  const STORAGE_KEY_LEADERBOARD = 'motionx_leaderboard_v2';
+  const STORAGE_KEY_LEADERBOARD = 'motionx_leaderboard_v1';
 
   const DEFAULT_LEADERBOARD = [
-    { name: 'CYBER_NEXUS', score: 14500, levels: 10, coins: 95 },
-    { name: 'NEO_RUNNER', score: 11200, levels: 8, coins: 72 },
-    { name: 'SYNTH_BLADE', score: 8500, levels: 6, coins: 55 },
-    { name: 'PHANTOM_99', score: 5500, levels: 4, coins: 35 },
-    { name: 'GLITCH_FOX', score: 3200, levels: 2, coins: 22 },
-    { name: 'BYTE_STRIKER', score: 1200, levels: 1, coins: 8 }
+    { name: 'CYBER_NEXUS', score: 25000, levels: 20, bestAttempts: 20 },
+    { name: 'NEO_RUNNER', score: 19800, levels: 18, bestAttempts: 25 },
+    { name: 'SYNTH_BLADE', score: 14500, levels: 14, bestAttempts: 22 },
+    { name: 'PHANTOM_99', score: 10200, levels: 10, bestAttempts: 18 },
+    { name: 'GLITCH_FOX', score: 6800, levels: 7, bestAttempts: 13 },
+    { name: 'BYTE_STRIKER', score: 3200, levels: 3, bestAttempts: 6 }
   ];
 
   let gameStateData = {
-    playerName: 'SHADOW',
+    playerName: '',
     unlockedLevel: 1,
-    lastPlayedLevel: 1,
     completedLevels: [],
-    totalCoins: 0,
-    levelCoins: {},         // { [levelId]: coinsCollectedCount }
-    bestAttempts: {},       // preserved for backward compat
-    levelAttempts: {},      // preserved for backward compat
-    allUnlockedByCheat: false,
+    bestAttempts: {},       // { [levelId]: bestAttemptsCount }
+    levelAttempts: {},      // { [levelId]: currentAttemptCount }
     settings: { ...defaultSettings }
   };
 
@@ -227,59 +50,15 @@
       const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('pulse_strider_vanilla_save_v1');
       if (raw) {
         const parsed = JSON.parse(raw);
-        const completedLevels = Array.isArray(parsed.completedLevels)
-          ? parsed.completedLevels.filter(n => typeof n === 'number' && n >= 1 && n <= 10)
-          : [];
-        const maxCompleted = completedLevels.length > 0 ? Math.max(...completedLevels) : 0;
-
-        let unlockedLevel = 1;
-        if (parsed.allUnlockedByCheat === true) {
-          unlockedLevel = 10;
-        } else if (typeof parsed.unlockedLevel === 'number') {
-          // Progression guard: enforce unlocking level-by-level as completed
-          // Clamps to maxCompleted + 1, clearing any previous hardcoded values
-          const target = Math.max(1, maxCompleted + 1);
-          unlockedLevel = Math.min(10, Math.min(parsed.unlockedLevel, target));
-        } else {
-          unlockedLevel = Math.max(1, Math.min(10, maxCompleted + 1));
-        }
-
-        let lastPlayedLevel = parsed.lastPlayedLevel || 1;
-        if (typeof lastPlayedLevel !== 'number' || lastPlayedLevel < 1 || lastPlayedLevel > unlockedLevel) {
-          lastPlayedLevel = Math.min(unlockedLevel, Math.max(1, lastPlayedLevel || 1));
-        }
-
         gameStateData = {
-          playerName: (parsed.playerName || 'SHADOW').trim().toUpperCase(),
-          unlockedLevel: unlockedLevel,
-          lastPlayedLevel: lastPlayedLevel,
-          completedLevels: completedLevels,
-          totalCoins: parsed.totalCoins || 0,
-          levelCoins: parsed.levelCoins || {},
+          playerName: parsed.playerName || 'SHADOW',
+          unlockedLevel: parsed.unlockedLevel || 1,
+          completedLevels: Array.isArray(parsed.completedLevels) ? parsed.completedLevels : [],
           bestAttempts: parsed.bestAttempts || {},
           levelAttempts: parsed.levelAttempts || {},
-          allUnlockedByCheat: parsed.allUnlockedByCheat || false,
           settings: { ...defaultSettings, ...(parsed.settings || {}) }
         };
-        if (!parsed.settings || !parsed.settings._dualHandsEnforcedV3 || parsed.settings.trackingHands !== 2 || parsed.settings.cameraEngine === 'cv') {
-          gameStateData.settings = {
-            ...defaultSettings,
-            cameraEngine: 'mediapipe',
-            perfProfile: 'auto',
-            trackingHands: 2,
-            _dualHandsEnforcedV3: true
-          };
-          persistData();
-        }
-      } else {
-        gameStateData.playerName = 'SHADOW';
-        gameStateData.unlockedLevel = 1;
-        gameStateData.lastPlayedLevel = 1;
-        gameStateData.completedLevels = [];
       }
-      persistData();
-      syncCurrentPlayerToLeaderboard();
-      updatePlayerNameUI();
     } catch (e) {
       console.warn('Could not read save data:', e);
     }
@@ -296,36 +75,10 @@
   // --- LEADERBOARD & PLAYER NAME ENGINE ---
   function getLeaderboardData() {
     try {
-      let raw = localStorage.getItem(STORAGE_KEY_LEADERBOARD);
-      if (!raw) {
-        // Fallback migration from v1 if v2 does not exist yet
-        const v1 = localStorage.getItem('motionx_leaderboard_v1');
-        if (v1) {
-          const parsedV1 = JSON.parse(v1);
-          if (Array.isArray(parsedV1)) {
-            const botNames = ['CYBER_NEXUS', 'NEO_RUNNER', 'SYNTH_BLADE', 'PHANTOM_99', 'GLITCH_FOX', 'BYTE_STRIKER'];
-            const userEntries = parsedV1
-              .filter(e => e && e.name && !botNames.includes(e.name.toUpperCase()))
-              .map(e => ({
-                name: e.name.trim().toUpperCase(),
-                score: Math.min(16000, e.score || 0),
-                levels: Math.min(10, e.levels || 0),
-                coins: Math.min(150, e.coins || 0)
-              }));
-            const combined = [...JSON.parse(JSON.stringify(DEFAULT_LEADERBOARD)), ...userEntries];
-            combined.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || ((b.coins || 0) - (a.coins || 0)));
-            saveLeaderboardData(combined);
-            return combined;
-          }
-        }
-      } else {
+      const raw = localStorage.getItem(STORAGE_KEY_LEADERBOARD);
+      if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map(e => ({
-            ...e,
-            levels: Math.min(10, e.levels || 0)
-          }));
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {
       console.warn('Could not load leaderboard:', e);
@@ -342,88 +95,50 @@
   }
 
   function calculatePlayerScore() {
-    const completedCount = Math.min(10, (gameStateData.completedLevels || []).length);
-    let coins = gameStateData.totalCoins || 0;
-    // Real-time addition: active collected coins during gameplay
-    if (currentGameInstance && (currentGameInstance.state === 'PLAYING' || currentGameInstance.state === 'PAUSED')) {
-      const curLvl = currentGameInstance.currentLevelId;
-      const prevLvlCoins = (gameStateData.levelCoins && gameStateData.levelCoins[curLvl]) || 0;
-      const curCollected = currentGameInstance.coinsCollected || 0;
-      if (curCollected > prevLvlCoins) {
-        coins += (curCollected - prevLvlCoins);
-      }
+    const completedCount = (gameStateData.completedLevels || []).length;
+    let totalAttempts = 0;
+    for (const lvlId in gameStateData.bestAttempts) {
+      totalAttempts += (gameStateData.bestAttempts[lvlId] || 1);
     }
     const levelScore = completedCount * 1000;
-    const coinBonus = coins * 100;
-    const bossBonus = (gameStateData.completedLevels || []).includes(10) ? 2500 : 0;
-    return levelScore + coinBonus + bossBonus;
+    const efficiencyBonus = Math.max(0, (completedCount * 4 - totalAttempts) * 150);
+    return levelScore + efficiencyBonus;
   }
 
   function syncCurrentPlayerToLeaderboard() {
-    const name = (gameStateData.playerName || 'SHADOW').trim().toUpperCase();
+    const name = (gameStateData.playerName || '').trim();
     if (!name) return;
     const score = calculatePlayerScore();
-    const levels = Math.min(10, (gameStateData.completedLevels || []).length);
-    let coins = gameStateData.totalCoins || 0;
+    const levels = (gameStateData.completedLevels || []).length;
+    let totalAttempts = 0;
+    for (const lvlId in gameStateData.bestAttempts) {
+      totalAttempts += (gameStateData.bestAttempts[lvlId] || 1);
+    }
 
     const list = getLeaderboardData();
-    const idx = list.findIndex(e => (e.name || '').trim().toUpperCase() === name);
-
-    const prevScore = idx >= 0 ? (list[idx].score || 0) : 0;
-    const prevLevels = idx >= 0 ? (list[idx].levels || 0) : 0;
-    const prevCoins = idx >= 0 ? (list[idx].coins || 0) : 0;
-
-    const finalScore = Math.max(prevScore, score);
-    const finalLevels = Math.min(10, Math.max(prevLevels, levels));
-    const finalCoins = Math.max(prevCoins, coins);
-
+    const idx = list.findIndex(e => (e.name || '').trim().toLowerCase() === name.toLowerCase());
     const entry = {
       name: name,
-      score: finalScore,
-      levels: finalLevels,
-      coins: finalCoins
+      score: score,
+      levels: levels,
+      bestAttempts: totalAttempts || (levels > 0 ? levels : 1)
     };
 
     if (idx >= 0) {
-      list[idx] = entry;
+      list[idx] = { ...list[idx], ...entry };
     } else {
       list.push(entry);
     }
 
-    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || ((b.coins || 0) - (a.coins || 0)));
-    saveLeaderboardData(list);
-  }
-
-  function renamePlayerOnLeaderboard(oldName, newName) {
-    if (!oldName || !newName || oldName.trim().toUpperCase() === newName.trim().toUpperCase()) return;
-    const list = getLeaderboardData();
-    const oldClean = oldName.trim().toUpperCase();
-    const newClean = newName.trim().toUpperCase();
-
-    const oldIdx = list.findIndex(e => (e.name || '').trim().toUpperCase() === oldClean);
-    const newIdx = list.findIndex(e => (e.name || '').trim().toUpperCase() === newClean);
-
-    if (oldIdx >= 0 && newIdx >= 0 && oldIdx !== newIdx) {
-      list[newIdx].score = Math.max(list[newIdx].score || 0, list[oldIdx].score || 0);
-      list[newIdx].levels = Math.max(list[newIdx].levels || 0, list[oldIdx].levels || 0);
-      list[newIdx].coins = Math.max(list[newIdx].coins || 0, list[oldIdx].coins || 0);
-      list.splice(oldIdx, 1);
-    } else if (oldIdx >= 0) {
-      list[oldIdx].name = newClean;
-    }
-    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || ((b.coins || 0) - (a.coins || 0)));
+    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || (a.bestAttempts - b.bestAttempts));
     saveLeaderboardData(list);
   }
 
   function checkPlayerNameExisted(name) {
     if (!name || !name.trim()) return false;
-    const clean = name.trim().toUpperCase();
-    const currentClean = (gameStateData.playerName || '').trim().toUpperCase();
-    // If it's the current player's own active name, it's completely valid!
-    if (currentClean && clean === currentClean) return false;
-    // Check if name is reserved for default AI champions
-    const isBot = DEFAULT_LEADERBOARD.some(b => (b.name || '').trim().toUpperCase() === clean);
-    return isBot;
+    const clean = name.trim().toLowerCase();
+    const list = getLeaderboardData();
+    return list.some(entry => (entry.name || '').trim().toLowerCase() === clean);
   }
 
   let pendingPlayerNameCallback = null;
@@ -434,14 +149,11 @@
     const input = document.getElementById('input-player-name');
     const errBox = document.getElementById('player-name-error');
     if (modal && input) {
-      input.value = gameStateData.playerName || 'SHADOW';
+      input.value = gameStateData.playerName || '';
       if (errBox) errBox.classList.add('hidden');
       input.classList.remove('has-error');
       modal.classList.remove('hidden');
-      setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 60);
+      setTimeout(() => input.focus(), 60);
     }
   }
 
@@ -455,11 +167,11 @@
     const input = document.getElementById('input-player-name');
     const errBox = document.getElementById('player-name-error');
     if (!input) return;
-    const val = input.value.trim().toUpperCase();
+    const val = input.value.trim();
 
     if (!val) {
       if (errBox) {
-        errBox.textContent = 'Please enter a player callsign';
+        errBox.textContent = 'Please enter a player name';
         errBox.classList.remove('hidden');
       }
       input.classList.add('has-error');
@@ -467,19 +179,10 @@
       return;
     }
 
-    if (val.length < 2) {
-      if (errBox) {
-        errBox.textContent = 'Callsign must be at least 2 characters';
-        errBox.classList.remove('hidden');
-      }
-      input.classList.add('has-error');
-      input.focus();
-      return;
-    }
-
+    // Name uniqueness validation: if name already entered, show "name is existed"
     if (checkPlayerNameExisted(val)) {
       if (errBox) {
-        errBox.textContent = 'Name is reserved for AI champion';
+        errBox.textContent = 'name is existed';
         errBox.classList.remove('hidden');
       }
       input.classList.add('has-error');
@@ -487,14 +190,9 @@
       return;
     }
 
-    // Valid unique callsign: persist and rename existing leaderboard entry
-    const oldName = gameStateData.playerName;
+    // Valid unique name
     gameStateData.playerName = val;
     persistData();
-
-    if (oldName && oldName !== val) {
-      renamePlayerOnLeaderboard(oldName, val);
-    }
     syncCurrentPlayerToLeaderboard();
     updatePlayerNameUI();
     closePlayerNameModal();
@@ -525,12 +223,12 @@
   function renderLeaderboard() {
     syncCurrentPlayerToLeaderboard();
     const list = getLeaderboardData();
-    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || ((b.coins || 0) - (a.coins || 0)));
+    list.sort((a, b) => (b.score - a.score) || (b.levels - a.levels) || (a.bestAttempts - b.bestAttempts));
 
-    const currentName = (gameStateData.playerName || 'SHADOW').trim().toUpperCase();
+    const currentName = (gameStateData.playerName || '').trim().toLowerCase();
     let currentRank = '-';
     let currentScore = calculatePlayerScore();
-    let currentLevels = Math.min(10, (gameStateData.completedLevels || []).length);
+    let currentLevels = (gameStateData.completedLevels || []).length;
 
     const container = document.getElementById('leaderboard-list-container');
     if (!container) return;
@@ -539,12 +237,11 @@
 
     list.forEach((entry, idx) => {
       const rankNum = idx + 1;
-      const entryName = (entry.name || '').trim().toUpperCase();
-      const isYou = currentName && entryName === currentName;
+      const isYou = currentName && (entry.name || '').trim().toLowerCase() === currentName;
       if (isYou) {
         currentRank = `#${rankNum}`;
-        currentScore = Math.max(currentScore, entry.score || 0);
-        currentLevels = Math.min(10, Math.max(currentLevels, entry.levels || 0));
+        currentScore = entry.score;
+        currentLevels = entry.levels;
       }
 
       const row = document.createElement('div');
@@ -569,7 +266,7 @@
           <span>${escapeHTML(entry.name)}</span>
           ${isYou ? '<span class="badge-you">YOU</span>' : ''}
         </div>
-        <span class="col-levels">${Math.min(10, entry.levels || 0)} / 10</span>
+        <span class="col-levels">${entry.levels || 0} / 20</span>
         <span class="col-score">${(entry.score || 0).toLocaleString()} PTS</span>
       `;
 
@@ -583,8 +280,8 @@
 
     if (rankEl) rankEl.textContent = currentRank;
     if (scoreEl) scoreEl.textContent = currentScore.toLocaleString();
-    if (clearedEl) clearedEl.textContent = `${currentLevels} / 10`;
-    if (tagEl) tagEl.textContent = `CALLSIGN: ${currentName}`;
+    if (clearedEl) clearedEl.textContent = `${currentLevels} / 20`;
+    if (tagEl) tagEl.textContent = `CALLSIGN: ${gameStateData.playerName ? gameStateData.playerName.toUpperCase() : 'GUEST'}`;
   }
 
   function getLevelAttempt(levelId) {
@@ -609,12 +306,10 @@
       gameStateData.bestAttempts[levelId] = attemptsUsed;
       isNewBest = true;
     }
-    // Unlock next level (levels unlock one by one as they are completed)
-    const nextLevelId = levelId + 1;
-    if (nextLevelId <= 10 && nextLevelId > (gameStateData.unlockedLevel || 1)) {
-      gameStateData.unlockedLevel = nextLevelId;
+    // Unlock next level (up to 20)
+    if (levelId >= gameStateData.unlockedLevel && levelId < 20) {
+      gameStateData.unlockedLevel = levelId + 1;
     }
-    gameStateData.lastPlayedLevel = Math.min(10, nextLevelId <= 10 ? nextLevelId : levelId);
     if (!gameStateData.completedLevels.includes(levelId)) {
       gameStateData.completedLevels.push(levelId);
     }
@@ -926,56 +621,26 @@
       osc.stop(t + 0.04);
     }
 
-    playCoinPickup() {
+    playCoin() {
       if (!gameStateData.settings.sfx) return;
       this.ensureContext();
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
-      // High-pitched 2-tone melodic chime (B5 to E6)
-      const osc1 = this.ctx.createOscillator();
-      const osc2 = this.ctx.createOscillator();
+      const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-
-      osc1.type = 'sine';
-      osc2.type = 'triangle';
-      osc1.frequency.setValueAtTime(987.77, t); // B5
-      osc1.frequency.setValueAtTime(1318.51, t + 0.08); // E6
-      osc2.frequency.setValueAtTime(1975.53, t + 0.08); // B6 shimmer
-
-      gain.gain.setValueAtTime(0.24, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
-
-      osc1.connect(gain);
-      osc2.connect(gain);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(987.77, t); // B5
+      osc.frequency.setValueAtTime(1318.51, t + 0.08); // E6
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime(0.3, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(gain);
       gain.connect(this.ctx.destination);
-      osc1.start(t);
-      osc2.start(t + 0.08);
-      osc1.stop(t + 0.29);
-      osc2.stop(t + 0.29);
+      osc.start(t);
+      osc.stop(t + 0.24);
     }
 
-    playCheckpoint() {
-      if (!gameStateData.settings.sfx) return;
-      this.ensureContext();
-      if (!this.ctx) return;
-      const t = this.ctx.currentTime;
-      const freqs = [698.46, 880.00, 1046.50, 1318.51];
-      freqs.forEach((freq, idx) => {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = idx === freqs.length - 1 ? 'sine' : 'triangle';
-        osc.frequency.setValueAtTime(freq, t + idx * 0.07);
-        gain.gain.setValueAtTime(0.001, t);
-        gain.gain.setValueAtTime(0.28, t + idx * 0.07);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.07 + 0.38);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(t + idx * 0.07);
-        osc.stop(t + idx * 0.07 + 0.40);
-      });
-    }
-
-    playPlayerHurt() {
+    playPlayerHit() {
       if (!gameStateData.settings.sfx) return;
       this.ensureContext();
       if (!this.ctx) return;
@@ -984,38 +649,82 @@
       const gain = this.ctx.createGain();
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(260, t);
-      osc.frequency.exponentialRampToValueAtTime(75, t + 0.18);
-      gain.gain.setValueAtTime(0.38, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      osc.frequency.exponentialRampToValueAtTime(65, t + 0.22);
+      gain.gain.setValueAtTime(0.4, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
       osc.connect(gain);
       gain.connect(this.ctx.destination);
       osc.start(t);
-      osc.stop(t + 0.22);
+      osc.stop(t + 0.26);
     }
 
-    playLocked() {
+    playEnemyHit() {
       if (!gameStateData.settings.sfx) return;
       this.ensureContext();
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
       const osc = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
       const gain = this.ctx.createGain();
       osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(140, t);
-      osc.frequency.setValueAtTime(105, t + 0.08);
-      gain.gain.setValueAtTime(0.22, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-      osc.connect(gain);
+      osc.frequency.setValueAtTime(440, t);
+      osc.frequency.exponentialRampToValueAtTime(80, t + 0.18);
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(900, t);
+      gain.gain.setValueAtTime(0.45, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      osc.connect(filter);
+      filter.connect(gain);
       gain.connect(this.ctx.destination);
       osc.start(t);
-      osc.stop(t + 0.23);
+      osc.stop(t + 0.22);
+    }
+
+    playMissionComplete() {
+      if (!gameStateData.settings.sfx) return;
+      this.ensureContext();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      [523.25, 659.25, 783.99, 1046.50, 1318.51].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, t + idx * 0.08);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.setValueAtTime(0.28, t + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.08 + 0.28);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t + idx * 0.08);
+        osc.stop(t + idx * 0.08 + 0.3);
+      });
+    }
+
+    playGameOver() {
+      if (!gameStateData.settings.sfx) return;
+      this.ensureContext();
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      [220, 196, 174.61, 146.83].forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, t + idx * 0.14);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.setValueAtTime(0.35, t + idx * 0.14);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + idx * 0.14 + 0.3);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t + idx * 0.14);
+        osc.stop(t + idx * 0.14 + 0.32);
+      });
     }
   }
 
   const sound = new SoundEngine();
 
   // =========================================================================
-  // 3. 10 HANDCRAFTED PLAYABLE LEVELS (2 PER CHAPTER)
+  // 3. 20 HANDCRAFTED PLAYABLE LEVELS ACROSS 5 THEMES
   // =========================================================================
   const LEVELS = [
     // World 1: Digital Night City (Cyan / Magenta)
@@ -1076,10 +785,72 @@
       ],
       goal: { x: 2280, y: 440, width: 20, height: 36 }
     },
-
-    // Chapter 2 / World 2: Dark Forest (Green / Bio-Luminescent)
     {
-      id: 3, name: "Spore Caverns", world: 2, bpm: 112, spawn: { x: 50, y: 390 }, width: 2950, height: 540,
+      id: 3, name: "Grid Abyss", world: 1, bpm: 110, spawn: { x: 50, y: 390 }, width: 2550, height: 540,
+      platforms: [
+        // Section 1: Grid Runway
+        { x: 0, y: 440, width: 320, height: 100 },
+        // Section 2: Dual Route Lower & Upper
+        { x: 380, y: 440, width: 320, height: 100 },
+        { x: 450, y: 340, width: 240, height: 24 },
+        // Section 3: Chasm Leaps
+        { x: 760, y: 420, width: 170, height: 120 },
+        { x: 990, y: 370, width: 160, height: 170 },
+        { x: 1210, y: 440, width: 380, height: 100 },
+        // Section 4: Beetle Patrol
+        { x: 1650, y: 380, width: 160, height: 24 },
+        { x: 1870, y: 330, width: 180, height: 24 },
+        { x: 2110, y: 390, width: 160, height: 24 },
+        // Section 5: Grid Exit & Goal
+        { x: 2330, y: 440, width: 270, height: 100 }
+      ],
+      hazards: [],
+      enemies: [
+        { x: 1330, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 },
+        { x: 1460, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 }
+      ],
+      targetBlocks: [
+        { x: 570, y: 318, width: 26, height: 26 },
+        { x: 840, y: 398, width: 26, height: 26 }
+      ],
+      goal: { x: 2470, y: 440, width: 20, height: 36 }
+    },
+    {
+      id: 4, name: "First Contact", world: 1, bpm: 110, spawn: { x: 50, y: 390 }, width: 2750, height: 540,
+      platforms: [
+        // Section 1: Outskirts Runway
+        { x: 0, y: 440, width: 340, height: 100 },
+        // Section 2: Patrol Alley
+        { x: 400, y: 440, width: 360, height: 100 },
+        // Section 3: Elevated Overpass & Drone Flight
+        { x: 820, y: 390, width: 160, height: 24 },
+        { x: 1040, y: 330, width: 220, height: 24 },
+        { x: 1320, y: 380, width: 170, height: 24 },
+        // Section 4: Lower Tunnels & Beetles
+        { x: 1550, y: 440, width: 380, height: 100 },
+        // Section 5: Floating Pillars
+        { x: 1990, y: 380, width: 140, height: 24 },
+        { x: 2190, y: 340, width: 140, height: 24 },
+        { x: 2390, y: 390, width: 140, height: 24 },
+        // Section 6: Outskirts Gate & Goal
+        { x: 2580, y: 440, width: 250, height: 100 }
+      ],
+      hazards: [],
+      enemies: [
+        { x: 530, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 },
+        { x: 1140, y: 260, width: 22, height: 22, type: 'patrol_drone', vx: 1.0, maxTravel: 70, health: 1 },
+        { x: 1710, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 1.0, maxTravel: 60, health: 1 }
+      ],
+      targetBlocks: [
+        { x: 620, y: 418, width: 26, height: 26 },
+        { x: 1110, y: 308, width: 26, height: 26 }
+      ],
+      goal: { x: 2680, y: 440, width: 20, height: 36 }
+    },
+
+    // World 2: Dark Forest (Green / Bio-Luminescent)
+    {
+      id: 5, name: "Spore Caverns", world: 2, bpm: 112, spawn: { x: 50, y: 390 }, width: 2950, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 410, width: 180, height: 130 },
@@ -1108,7 +879,7 @@
       goal: { x: 2880, y: 440, width: 20, height: 36 }
     },
     {
-      id: 4, name: "Overgrowth Run", world: 2, bpm: 114, spawn: { x: 50, y: 390 }, width: 3150, height: 540,
+      id: 6, name: "Overgrowth Run", world: 2, bpm: 114, spawn: { x: 50, y: 390 }, width: 3150, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 440, width: 340, height: 100 },
@@ -1133,10 +904,70 @@
       ],
       goal: { x: 3040, y: 440, width: 20, height: 36 }
     },
-
-    // Chapter 3 / World 3: Underground Factory (Amber / Industrial)
     {
-      id: 5, name: "Piston Core", world: 3, bpm: 118, spawn: { x: 50, y: 390 }, width: 3750, height: 540,
+      id: 7, name: "Swarm Canopy", world: 2, bpm: 115, spawn: { x: 50, y: 390 }, width: 3350, height: 540,
+      platforms: [
+        { x: 0, y: 440, width: 320, height: 100 },
+        { x: 380, y: 400, width: 180, height: 140 },
+        { x: 620, y: 340, width: 180, height: 200 },
+        { x: 860, y: 390, width: 180, height: 150 },
+        { x: 1100, y: 440, width: 360, height: 100 },
+        { x: 1520, y: 380, width: 160, height: 24 },
+        { x: 1740, y: 330, width: 160, height: 24 },
+        { x: 1960, y: 280, width: 160, height: 24 },
+        { x: 2180, y: 340, width: 160, height: 24 },
+        { x: 2400, y: 440, width: 380, height: 100 },
+        { x: 2840, y: 380, width: 160, height: 24 },
+        { x: 3060, y: 440, width: 320, height: 100 }
+      ],
+      hazards: [
+        { x: 1220, y: 432, width: 50, height: 8, type: 'spikes' }
+      ],
+      enemies: [
+        { x: 710, y: 260, width: 22, height: 22, type: 'patrol_drone', vx: 1.1, maxTravel: 60, health: 1 },
+        { x: 1820, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.2, maxTravel: 65, health: 1 },
+        { x: 2560, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 }
+      ],
+      targetBlocks: [
+        { x: 940, y: 368, width: 26, height: 26 },
+        { x: 2030, y: 258, width: 26, height: 26 }
+      ],
+      goal: { x: 3240, y: 440, width: 20, height: 36 }
+    },
+    {
+      id: 8, name: "Shifting Moss", world: 2, bpm: 116, spawn: { x: 50, y: 390 }, width: 3550, height: 540,
+      platforms: [
+        { x: 0, y: 440, width: 300, height: 100 },
+        { x: 360, y: 430, width: 110, height: 20, isMoving: true, vx: 1.3, vy: 0, travelDistance: 130, travelProgress: 0 },
+        { x: 640, y: 410, width: 180, height: 130 },
+        { x: 880, y: 360, width: 180, height: 180 },
+        { x: 1120, y: 360, width: 110, height: 20, isMoving: true, vx: 0, vy: -1.1, travelDistance: 70, travelProgress: 0 },
+        { x: 1370, y: 280, width: 200, height: 260 },
+        { x: 1630, y: 360, width: 120, height: 20, isMoving: true, vx: 1.4, vy: 0, travelDistance: 140, travelProgress: 0 },
+        { x: 1930, y: 440, width: 380, height: 100 },
+        { x: 2370, y: 380, width: 150, height: 24 },
+        { x: 2580, y: 330, width: 150, height: 24 },
+        { x: 2790, y: 380, width: 150, height: 24 },
+        { x: 3000, y: 440, width: 200, height: 100 },
+        { x: 3260, y: 440, width: 320, height: 100 }
+      ],
+      hazards: [
+        { x: 2050, y: 432, width: 50, height: 8, type: 'spikes' }
+      ],
+      enemies: [
+        { x: 1460, y: 268, width: 24, height: 18, type: 'glitch_beetle', vx: 0.9, maxTravel: 60, health: 1 },
+        { x: 2110, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 1.0, maxTravel: 60, health: 1 }
+      ],
+      targetBlocks: [
+        { x: 960, y: 338, width: 26, height: 26 },
+        { x: 2440, y: 358, width: 26, height: 26 }
+      ],
+      goal: { x: 3430, y: 440, width: 20, height: 36 }
+    },
+
+    // World 3: Underground Factory (Amber / Industrial)
+    {
+      id: 9, name: "Piston Core", world: 3, bpm: 118, spawn: { x: 50, y: 390 }, width: 3750, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 430, width: 100, height: 20, isMoving: true, vx: 0, vy: -1.0, travelDistance: 70, travelProgress: 0 },
@@ -1168,7 +999,7 @@
       goal: { x: 3620, y: 440, width: 20, height: 36 }
     },
     {
-      id: 6, name: "Steam Maze", world: 3, bpm: 120, spawn: { x: 50, y: 390 }, width: 3950, height: 540,
+      id: 10, name: "Steam Maze", world: 3, bpm: 120, spawn: { x: 50, y: 390 }, width: 3950, height: 540,
       platforms: [
         { x: 0, y: 440, width: 300, height: 100 },
         { x: 360, y: 410, width: 170, height: 130 },
@@ -1200,10 +1031,75 @@
       ],
       goal: { x: 3820, y: 440, width: 20, height: 36 }
     },
-
-    // Chapter 4 / World 4: Neon Cyber World (Purple / Violet)
     {
-      id: 7, name: "Data Stream", world: 4, bpm: 126, spawn: { x: 50, y: 390 }, width: 4550, height: 540,
+      id: 11, name: "Overclock", world: 3, bpm: 124, spawn: { x: 50, y: 390 }, width: 4150, height: 540,
+      platforms: [
+        { x: 0, y: 440, width: 320, height: 100 },
+        { x: 380, y: 410, width: 180, height: 130 },
+        { x: 620, y: 410, width: 110, height: 20, isMoving: true, vx: 1.5, vy: 0, travelDistance: 130, travelProgress: 0 },
+        { x: 900, y: 380, width: 200, height: 160 },
+        { x: 1160, y: 440, width: 380, height: 100 },
+        { x: 1600, y: 380, width: 160, height: 24 },
+        { x: 1820, y: 320, width: 180, height: 24 },
+        { x: 2060, y: 370, width: 160, height: 24 },
+        { x: 2280, y: 440, width: 380, height: 100 },
+        { x: 2720, y: 380, width: 150, height: 24 },
+        { x: 2930, y: 330, width: 160, height: 24 },
+        { x: 3150, y: 380, width: 150, height: 24 },
+        { x: 3360, y: 440, width: 810, height: 100 }
+      ],
+      hazards: [
+        { x: 980, y: 372, width: 40, height: 8, type: 'laser' },
+        { x: 1300, y: 432, width: 40, height: 8, type: 'laser' },
+        { x: 2420, y: 432, width: 40, height: 8, type: 'laser' }
+      ],
+      enemies: [
+        { x: 1260, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 1.1, maxTravel: 60, health: 1 },
+        { x: 1910, y: 240, width: 22, height: 22, type: 'patrol_drone', vx: 1.2, maxTravel: 60, health: 1 },
+        { x: 2510, y: 428, width: 24, height: 18, type: 'glitch_beetle', vx: 1.1, maxTravel: 60, health: 1 }
+      ],
+      targetBlocks: [
+        { x: 1680, y: 358, width: 26, height: 26 },
+        { x: 3010, y: 308, width: 26, height: 26 }
+      ],
+      goal: { x: 4010, y: 440, width: 20, height: 36 }
+    },
+    {
+      id: 12, name: "Conveyor Hazard", world: 3, bpm: 124, spawn: { x: 50, y: 390 }, width: 4350, height: 540,
+      platforms: [
+        { x: 0, y: 440, width: 320, height: 100 },
+        { x: 380, y: 440, width: 360, height: 100 },
+        { x: 800, y: 400, width: 220, height: 140 },
+        { x: 1080, y: 440, width: 360, height: 100 },
+        { x: 1500, y: 380, width: 170, height: 24 },
+        { x: 1730, y: 330, width: 180, height: 24 },
+        { x: 1970, y: 380, width: 170, height: 24 },
+        { x: 2200, y: 440, width: 400, height: 100 },
+        { x: 2660, y: 380, width: 160, height: 24 },
+        { x: 2880, y: 330, width: 170, height: 24 },
+        { x: 3110, y: 380, width: 160, height: 24 },
+        { x: 3330, y: 440, width: 1040, height: 100 }
+      ],
+      hazards: [
+        { x: 500, y: 432, width: 45, height: 8, type: 'spikes' },
+        { x: 1200, y: 432, width: 45, height: 8, type: 'spikes' },
+        { x: 2350, y: 432, width: 45, height: 8, type: 'spikes' }
+      ],
+      enemies: [
+        { x: 890, y: 384, width: 30, height: 30, type: 'titan_guard', vx: 0.7, maxTravel: 45, health: 2 },
+        { x: 1820, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.2, maxTravel: 60, health: 1 },
+        { x: 2400, y: 424, width: 30, height: 30, type: 'titan_guard', vx: 0.7, maxTravel: 50, health: 2 }
+      ],
+      targetBlocks: [
+        { x: 1580, y: 358, width: 26, height: 26 },
+        { x: 2960, y: 308, width: 26, height: 26 }
+      ],
+      goal: { x: 4210, y: 440, width: 20, height: 36 }
+    },
+
+    // World 4: Neon Cyber World (Purple / Violet)
+    {
+      id: 13, name: "Data Stream", world: 4, bpm: 126, spawn: { x: 50, y: 390 }, width: 4550, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 400, width: 190, height: 140 },
@@ -1235,7 +1131,7 @@
       goal: { x: 4420, y: 440, width: 20, height: 36 }
     },
     {
-      id: 8, name: "Glitch Vector", world: 4, bpm: 128, spawn: { x: 50, y: 390 }, width: 4750, height: 540,
+      id: 14, name: "Glitch Vector", world: 4, bpm: 128, spawn: { x: 50, y: 390 }, width: 4750, height: 540,
       platforms: [
         { x: 0, y: 440, width: 300, height: 100 },
         { x: 360, y: 410, width: 170, height: 130 },
@@ -1268,10 +1164,81 @@
       ],
       goal: { x: 4610, y: 440, width: 20, height: 36 }
     },
-
-    // Chapter 5 / World 5: Ancient Futuristic Ruins (Electric Blue / Chrono Gold)
     {
-      id: 9, name: "Forgotten Nexus", world: 5, bpm: 134, spawn: { x: 50, y: 390 }, width: 5350, height: 540,
+      id: 15, name: "Syntax Sprint", world: 4, bpm: 130, spawn: { x: 50, y: 390 }, width: 4950, height: 540,
+      platforms: [
+        { x: 0, y: 440, width: 300, height: 100 },
+        { x: 360, y: 440, width: 240, height: 100 },
+        { x: 660, y: 400, width: 180, height: 140 },
+        { x: 900, y: 350, width: 180, height: 190 },
+        { x: 1140, y: 380, width: 180, height: 160 },
+        { x: 1380, y: 440, width: 420, height: 100 },
+        { x: 1860, y: 380, width: 160, height: 24 },
+        { x: 2080, y: 320, width: 170, height: 24 },
+        { x: 2310, y: 270, width: 170, height: 24 },
+        { x: 2540, y: 330, width: 170, height: 24 },
+        { x: 2770, y: 440, width: 440, height: 100 },
+        { x: 3270, y: 380, width: 160, height: 24 },
+        { x: 3490, y: 330, width: 160, height: 24 },
+        { x: 3710, y: 390, width: 160, height: 24 },
+        { x: 3930, y: 440, width: 1040, height: 100 }
+      ],
+      hazards: [
+        { x: 450, y: 432, width: 40, height: 8, type: 'laser' },
+        { x: 1210, y: 372, width: 40, height: 8, type: 'laser' },
+        { x: 1550, y: 432, width: 40, height: 8, type: 'laser' },
+        { x: 2940, y: 432, width: 40, height: 8, type: 'laser' }
+      ],
+      enemies: [
+        { x: 990, y: 334, width: 26, height: 18, type: 'cyber_prowler', vx: 1.4, maxTravel: 60, health: 1 },
+        { x: 2160, y: 240, width: 22, height: 22, type: 'patrol_drone', vx: 1.3, maxTravel: 60, health: 1 },
+        { x: 2950, y: 428, width: 26, height: 18, type: 'cyber_prowler', vx: 1.5, maxTravel: 65, health: 1 }
+      ],
+      targetBlocks: [
+        { x: 740, y: 378, width: 26, height: 26 },
+        { x: 2390, y: 248, width: 26, height: 26 },
+        { x: 3570, y: 308, width: 26, height: 26 }
+      ],
+      goal: { x: 4810, y: 440, width: 20, height: 36 }
+    },
+    {
+      id: 16, name: "Hyperspace Beat", world: 4, bpm: 132, spawn: { x: 50, y: 390 }, width: 5150, height: 540,
+      platforms: [
+        { x: 0, y: 440, width: 300, height: 100 },
+        { x: 360, y: 410, width: 110, height: 20, isMoving: true, vx: 1.6, vy: 0, travelDistance: 130, travelProgress: 0 },
+        { x: 640, y: 380, width: 190, height: 160 },
+        { x: 890, y: 360, width: 110, height: 20, isMoving: true, vx: 0, vy: -1.2, travelDistance: 70, travelProgress: 0 },
+        { x: 1140, y: 290, width: 200, height: 250 },
+        { x: 1400, y: 440, width: 440, height: 100 },
+        { x: 1900, y: 380, width: 170, height: 24 },
+        { x: 2130, y: 330, width: 170, height: 24 },
+        { x: 2360, y: 380, width: 170, height: 24 },
+        { x: 2590, y: 440, width: 460, height: 100 },
+        { x: 3110, y: 380, width: 170, height: 24 },
+        { x: 3340, y: 330, width: 170, height: 24 },
+        { x: 3570, y: 380, width: 170, height: 24 },
+        { x: 3800, y: 440, width: 1370, height: 100 }
+      ],
+      hazards: [
+        { x: 720, y: 372, width: 45, height: 8, type: 'spikes' },
+        { x: 1570, y: 432, width: 50, height: 8, type: 'spikes' },
+        { x: 2780, y: 432, width: 50, height: 8, type: 'spikes' }
+      ],
+      enemies: [
+        { x: 1240, y: 274, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 45, health: 2 },
+        { x: 2210, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.3, maxTravel: 60, health: 1 },
+        { x: 2800, y: 424, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 50, health: 2 }
+      ],
+      targetBlocks: [
+        { x: 1480, y: 418, width: 26, height: 26 },
+        { x: 3220, y: 358, width: 26, height: 26 }
+      ],
+      goal: { x: 5020, y: 440, width: 20, height: 36 }
+    },
+
+    // World 5: Ancient Futuristic Ruins (Electric Blue / Chrono Gold)
+    {
+      id: 17, name: "Forgotten Nexus", world: 5, bpm: 134, spawn: { x: 50, y: 390 }, width: 5350, height: 540,
       platforms: [
         { x: 0, y: 440, width: 320, height: 100 },
         { x: 380, y: 400, width: 180, height: 140 },
@@ -1308,7 +1275,82 @@
       goal: { x: 5220, y: 440, width: 20, height: 36 }
     },
     {
-      id: 10, name: "The Chrono Core", world: 5, bpm: 140, spawn: { x: 50, y: 390 }, width: 6000, height: 540,
+      id: 18, name: "Titan's Gate", world: 5, bpm: 136, spawn: { x: 50, y: 390 }, width: 5550, height: 540,
+      platforms: [
+        { x: 0, y: 440, width: 320, height: 100 },
+        { x: 380, y: 420, width: 240, height: 120 },
+        { x: 680, y: 380, width: 200, height: 160 },
+        { x: 940, y: 380, width: 120, height: 20, isMoving: true, vx: 1.6, vy: 0, travelDistance: 130, travelProgress: 0 },
+        { x: 1230, y: 410, width: 260, height: 130 },
+        { x: 1550, y: 440, width: 460, height: 100 },
+        { x: 2070, y: 380, width: 180, height: 24 },
+        { x: 2310, y: 330, width: 180, height: 24 },
+        { x: 2550, y: 380, width: 180, height: 24 },
+        { x: 2790, y: 440, width: 480, height: 100 },
+        { x: 3330, y: 380, width: 170, height: 24 },
+        { x: 3560, y: 330, width: 170, height: 24 },
+        { x: 3790, y: 380, width: 170, height: 24 },
+        { x: 4020, y: 440, width: 1550, height: 100 }
+      ],
+      hazards: [
+        { x: 460, y: 412, width: 50, height: 8, type: 'spikes' },
+        { x: 1740, y: 432, width: 50, height: 8, type: 'spikes' },
+        { x: 2980, y: 432, width: 50, height: 8, type: 'spikes' }
+      ],
+      enemies: [
+        { x: 780, y: 364, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 45, health: 2 },
+        { x: 1780, y: 424, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 55, health: 2 },
+        { x: 2390, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.3, maxTravel: 60, health: 1 },
+        { x: 3020, y: 424, width: 30, height: 30, type: 'titan_guard', vx: 0.8, maxTravel: 55, health: 2 }
+      ],
+      targetBlocks: [
+        { x: 1350, y: 388, width: 26, height: 26 },
+        { x: 2150, y: 358, width: 26, height: 26 },
+        { x: 3640, y: 308, width: 26, height: 26 }
+      ],
+      goal: { x: 5410, y: 440, width: 20, height: 36 }
+    },
+    {
+      id: 19, name: "Chrono Collapse", world: 5, bpm: 138, spawn: { x: 50, y: 390 }, width: 5750, height: 540,
+      platforms: [
+        { x: 0, y: 440, width: 300, height: 100 },
+        { x: 360, y: 410, width: 110, height: 20, isMoving: true, vx: 1.5, vy: 0, travelDistance: 130, travelProgress: 0 },
+        { x: 640, y: 370, width: 180, height: 170 },
+        { x: 880, y: 340, width: 110, height: 20, isMoving: true, vx: 0, vy: -1.3, travelDistance: 70, travelProgress: 0 },
+        { x: 1130, y: 270, width: 200, height: 270 },
+        { x: 1390, y: 360, width: 120, height: 20, isMoving: true, vx: 1.6, vy: 0, travelDistance: 140, travelProgress: 0 },
+        { x: 1690, y: 440, width: 440, height: 100 },
+        { x: 2190, y: 380, width: 170, height: 24 },
+        { x: 2420, y: 330, width: 170, height: 24 },
+        { x: 2650, y: 280, width: 170, height: 24 },
+        { x: 2880, y: 340, width: 170, height: 24 },
+        { x: 3110, y: 440, width: 480, height: 100 },
+        { x: 3650, y: 380, width: 170, height: 24 },
+        { x: 3880, y: 330, width: 170, height: 24 },
+        { x: 4110, y: 390, width: 170, height: 24 },
+        { x: 4340, y: 440, width: 1420, height: 100 }
+      ],
+      hazards: [
+        { x: 720, y: 362, width: 40, height: 8, type: 'laser' },
+        { x: 1210, y: 262, width: 40, height: 8, type: 'spikes' },
+        { x: 1870, y: 432, width: 50, height: 8, type: 'laser' },
+        { x: 3310, y: 432, width: 50, height: 8, type: 'spikes' }
+      ],
+      enemies: [
+        { x: 1220, y: 220, width: 22, height: 22, type: 'patrol_drone', vx: 1.4, maxTravel: 60, health: 1 },
+        { x: 1910, y: 428, width: 26, height: 18, type: 'cyber_prowler', vx: 1.5, maxTravel: 60, health: 1 },
+        { x: 2510, y: 250, width: 22, height: 22, type: 'patrol_drone', vx: 1.3, maxTravel: 60, health: 1 },
+        { x: 3330, y: 428, width: 26, height: 18, type: 'cyber_prowler', vx: 1.5, maxTravel: 60, health: 1 }
+      ],
+      targetBlocks: [
+        { x: 1770, y: 418, width: 26, height: 26 },
+        { x: 2730, y: 258, width: 26, height: 26 },
+        { x: 3960, y: 308, width: 26, height: 26 }
+      ],
+      goal: { x: 5610, y: 440, width: 20, height: 36 }
+    },
+    {
+      id: 20, name: "The Chrono Core", world: 5, bpm: 140, spawn: { x: 50, y: 390 }, width: 6000, height: 540,
       platforms: [
         // Sector 1: Nexus Entry Runway (0-450)
         { x: 0, y: 440, width: 450, height: 100 },
@@ -1361,197 +1403,127 @@
     }
   ];
 
-  /**
-   * Generates collectible cyber coins for the level layout along platforms, jump gaps, and target blocks
-   */
-  function generateLevelCoins(level) {
-    const coins = [];
-    const platforms = level.platforms || [];
-    const hazards = level.hazards || [];
-    const targetBlocks = level.targetBlocks || [];
-    const spawnX = (level.spawn && level.spawn.x) || 50;
-    const goalX = (level.goal && level.goal.x) || 2000;
+  function getLevelCopy(levelId) {
+    const lvl = LEVELS.find(l => l.id === levelId) || LEVELS[0];
+    return JSON.parse(JSON.stringify(lvl));
+  }
 
-    function isNearHazard(x, y) {
-      for (const h of hazards) {
-        if (Math.abs(x - (h.x + (h.width || 28) / 2)) < 35 && Math.abs(y - h.y) < 45) return true;
+  function generateCoinsForLevel(level) {
+    if (!level) return [];
+    const coins = [];
+    let coinId = 0;
+
+    // 1. Coins along platforms
+    if (level.platforms) {
+      for (const plat of level.platforms) {
+        if (plat.width < 90) {
+          coins.push({
+            id: coinId++,
+            x: plat.x + plat.width / 2,
+            y: plat.y - 24,
+            width: 22,
+            height: 22,
+            collected: false,
+            phase: coinId * 0.7
+          });
+        } else {
+          const count = Math.min(4, Math.max(1, Math.floor(plat.width / 160)));
+          const step = plat.width / (count + 1);
+          for (let i = 1; i <= count; i++) {
+            coins.push({
+              id: coinId++,
+              x: plat.x + step * i,
+              y: plat.y - 24,
+              width: 22,
+              height: 22,
+              collected: false,
+              phase: coinId * 0.7
+            });
+          }
+        }
       }
-      return false;
     }
 
-    platforms.forEach((plat, pIdx) => {
-      const startX = plat.x;
-      const endX = plat.x + plat.width;
-      const platY = plat.y;
+    // 2. High airborne exploration coins
+    const startX = level.spawn ? level.spawn.x + 200 : 250;
+    const endX = level.goal ? level.goal.x - 120 : (level.width ? level.width - 250 : 2000);
+    const midCount = Math.max(3, Math.min(8, Math.floor((endX - startX) / 380)));
+    for (let j = 0; j < midCount; j++) {
+      coins.push({
+        id: coinId++,
+        x: startX + (endX - startX) * ((j + 0.5) / midCount),
+        y: (level.spawn ? level.spawn.y : 390) - 85 - (j % 2) * 35,
+        width: 22,
+        height: 22,
+        collected: false,
+        phase: coinId * 0.7
+      });
+    }
 
-      let count = 0;
-      if (plat.width >= 320) count = 3;
-      else if (plat.width >= 160) count = 2;
-      else if (plat.width >= 80) count = 1;
-
-      if (count === 1) {
-        const cx = Math.round(startX + plat.width / 2);
-        const cy = Math.round(platY - 32);
-        if (cx > spawnX + 80 && cx < goalX - 30 && !isNearHazard(cx, cy)) {
-          coins.push({ x: cx, y: cy, width: 22, height: 22, collected: false });
-        }
-      } else if (count === 2) {
-        const c1 = Math.round(startX + plat.width * 0.32);
-        const c2 = Math.round(startX + plat.width * 0.68);
-        const cy = Math.round(platY - 32);
-        if (c1 > spawnX + 80 && c1 < goalX - 30 && !isNearHazard(c1, cy)) {
-          coins.push({ x: c1, y: cy, width: 22, height: 22, collected: false });
-        }
-        if (c2 > spawnX + 80 && c2 < goalX - 30 && !isNearHazard(c2, cy)) {
-          coins.push({ x: c2, y: cy, width: 22, height: 22, collected: false });
-        }
-      } else if (count >= 3) {
-        const step = plat.width / 4;
-        for (let i = 1; i <= 3; i++) {
-          const cx = Math.round(startX + step * i);
-          const cy = Math.round(platY - 32);
-          if (cx > spawnX + 80 && cx < goalX - 30 && !isNearHazard(cx, cy)) {
-            coins.push({ x: cx, y: cy, width: 22, height: 22, collected: false });
-          }
-        }
-      }
-
-      if (pIdx < platforms.length - 1) {
-        const nextPlat = platforms[pIdx + 1];
-        const gap = nextPlat.x - endX;
-        if (gap >= 40 && gap <= 240) {
-          const midX = Math.round(endX + gap / 2);
-          const midY = Math.round(Math.min(platY, nextPlat.y) - 54);
-          if (midX > spawnX + 80 && midX < goalX - 30) {
-            coins.push({ x: midX, y: midY, width: 22, height: 22, collected: false });
-          }
-        }
-      }
-    });
-
-    targetBlocks.forEach(tb => {
-      const cx = Math.round(tb.x);
-      const cy = Math.round(tb.y - 38);
-      if (!coins.some(c => Math.hypot(c.x - cx, c.y - cy) < 25)) {
-        coins.push({ x: cx, y: cy, width: 22, height: 22, collected: false });
-      }
-    });
-
-    coins.sort((a, b) => a.x - b.x);
     return coins;
   }
 
-  /**
-   * Generates strategic checkpoint beacons for the level layout along safe platforms
-   */
-  function generateLevelCheckpoints(level) {
-    const checkpoints = [];
-    const platforms = level.platforms || [];
-    const hazards = level.hazards || [];
-    const enemies = level.enemies || [];
-    const spawnX = (level.spawn && level.spawn.x) || 50;
-    const goalX = (level.goal && level.goal.x) || (level.width - 80);
+  const LEVEL_MISSIONS = {
+    1: { id: 1, type: 'coins', title: 'Cyber Harvest', description: 'Collect energy coins to power the grid terminal', target: 8, reward: 500 },
+    2: { id: 2, type: 'coins', title: 'Power Grid', description: 'Harvest all credit tokens on the rooftops', target: 8, reward: 500 },
+    3: { id: 3, type: 'defeat', title: 'Hostile Purge', description: 'Defeat 2 glitch beetles in the alley', target: 2, reward: 500 },
+    4: { id: 4, type: 'defeat', title: 'Drone Intercept', description: 'Eliminate all hostile patrol drones', target: 3, reward: 500 },
+    5: { id: 5, type: 'coins', title: 'Spore Collector', description: 'Gather neon energy spores across the cavern', target: 8, reward: 500 },
+    6: { id: 6, type: 'defeat', title: 'Canopy Cleansing', description: 'Exterminate hostile biological beetles', target: 2, reward: 500 },
+    7: { id: 7, type: 'survival', title: 'Neon Survivor', description: 'Reach the gateway without losing all shields', target: 1, reward: 500 },
+    8: { id: 8, type: 'coins', title: 'Waterfall Cache', description: 'Recover ancient encrypted coins', target: 8, reward: 500 },
+    9: { id: 9, type: 'defeat', title: 'Crypt Warden', description: 'Defeat phantom beetle enforcers', target: 3, reward: 500 },
+    10: { id: 10, type: 'coins', title: 'Blood Coin Search', description: 'Collect 10 soul matrix coins in the mist', target: 10, reward: 500 },
+    11: { id: 11, type: 'defeat', title: 'Graveyard Purge', description: 'Neutralize 3 graveyard drones & beetles', target: 3, reward: 500 },
+    12: { id: 12, type: 'survival', title: 'Sanctuary Run', description: 'Navigate the spikes and reach the portal', target: 1, reward: 500 },
+    13: { id: 13, type: 'coins', title: 'Nebula Stash', description: 'Collect stellar energy tokens', target: 10, reward: 500 },
+    14: { id: 14, type: 'defeat', title: 'Void Patrol', description: 'Destroy hostile space drones', target: 3, reward: 500 },
+    15: { id: 15, type: 'survival', title: 'Asteroid Belt', description: 'Survive the hazardous space chasm', target: 1, reward: 500 },
+    16: { id: 16, type: 'coins', title: 'Event Horizon', description: 'Gather 10 plasma credits before the rift', target: 10, reward: 500 },
+    17: { id: 17, type: 'defeat', title: 'Colosseum Battle', description: 'Defeat ancient cyber titans', target: 3, reward: 500 },
+    18: { id: 18, type: 'coins', title: 'Temple Relics', description: 'Collect 10 golden matrix shards', target: 10, reward: 500 },
+    19: { id: 19, type: 'defeat', title: 'Rift Incursion', description: 'Defeat dimensional rift enforcers', target: 3, reward: 500 },
+    20: { id: 20, type: 'exit', title: 'Grand Nexus Clear', description: 'Overcome the final boss & reach the core exit', target: 1, reward: 1000 }
+  };
 
-    const totalDist = goalX - spawnX;
-    const numCheckpoints = level.width > 3200 ? 2 : 1;
-    const targetRatios = numCheckpoints === 1 ? [0.50] : [0.35, 0.70];
-
-    function isSafeFromHazards(x, y) {
-      for (const h of hazards) {
-        const hx = h.x + (h.width || 28) / 2;
-        const hy = h.y + (h.height || 28) / 2;
-        if (Math.abs(x - hx) < 70 && Math.abs(y - hy) < 50) return false;
-      }
-      return true;
-    }
-
-    targetRatios.forEach((ratio, idx) => {
-      const targetX = spawnX + totalDist * ratio;
-      const candidates = platforms.filter(p => {
-        if (p.isMoving) return false;
-        if (p.width < 60) return false;
-        const midX = p.x + p.width / 2;
-        if (midX < spawnX + 250 || midX > goalX - 220) return false;
-        return true;
-      });
-
-      if (candidates.length === 0) return;
-
-      candidates.sort((a, b) => {
-        const distA = Math.abs((a.x + a.width / 2) - targetX);
-        const distB = Math.abs((b.x + b.width / 2) - targetX);
-        return distA - distB;
-      });
-
-      for (const plat of candidates) {
-        let candX = Math.round(plat.x + plat.width / 2);
-        const candY = plat.y - 24;
-
-        const nearEnemy = enemies.find(e => Math.abs(e.x - candX) < 65 && Math.abs(e.y - plat.y) < 40);
-        if (nearEnemy) {
-          if (nearEnemy.x > candX) {
-            candX = Math.max(plat.x + 25, candX - 35);
-          } else {
-            candX = Math.min(plat.x + plat.width - 25, candX + 35);
-          }
-        }
-
-        if (isSafeFromHazards(candX, plat.y)) {
-          if (!checkpoints.some(cp => Math.abs(cp.x - candX) < 250)) {
-            checkpoints.push({
-              id: 'cp_' + (idx + 1),
-              index: idx + 1,
-              x: candX,
-              y: candY,
-              platformY: plat.y,
-              width: 28,
-              height: 48,
-              active: false
-            });
-            break;
-          }
-        }
-      }
-    });
-
-    return checkpoints;
+  function getMissionForLevel(levelId, enemyCount = 0, coinCount = 0) {
+    const base = LEVEL_MISSIONS[levelId] || {
+      id: levelId,
+      type: coinCount >= 5 ? 'coins' : (enemyCount >= 2 ? 'defeat' : 'exit'),
+      title: 'Grid Operation',
+      description: 'Complete the level objective and reach the exit',
+      target: coinCount >= 5 ? Math.min(10, coinCount) : (enemyCount >= 2 ? enemyCount : 1),
+      reward: 500
+    };
+    return {
+      ...base,
+      target: base.type === 'coins' ? Math.min(base.target, Math.max(1, coinCount)) : (base.type === 'defeat' ? Math.min(base.target, Math.max(1, enemyCount)) : 1),
+      current: 0,
+      completed: false
+    };
   }
 
-  function getLevelCopy(levelId) {
-    const lvl = LEVELS.find(l => l.id === levelId) || LEVELS[0];
-    const copy = JSON.parse(JSON.stringify(lvl));
-    if (!copy.coins || copy.coins.length === 0) {
-      copy.coins = generateLevelCoins(copy);
-    }
-    if (!copy.checkpoints || copy.checkpoints.length === 0) {
-      copy.checkpoints = generateLevelCheckpoints(copy);
-    }
-    return copy;
-  }
+  // Multi-axis gesture state for simultaneous movement
+  let gestureInputState = { x: 0, y: 0, active: false, timestamp: 0 };
 
   // =========================================================================
   // =========================================================================
   // 4. REAL-TIME CAMERA HAND GESTURE CONTROL ENGINE
   // =========================================================================
-  let PLAYER_SPEED = 4.50; // Calibrated smooth & controllable velocity
+  let PLAYER_SPEED = 6.60; // 50% Boosted High-Speed Velocity (4.40 * 1.50 = 6.60)
   const JUMP_FORCE = 15.5; // High-velocity turbo jump impulse (fast takeoff)
   const attackCooldown = 500; // 500ms cooldown (Section 8 & 12)
   let attackLocked = false;
   let fistAttackTriggered = false;
 
-  // Active keyboard keys Set & touch state for simultaneous multi-key controls
-  const activeKeys = new Set();
-  let touchMoveDirection = null; // 'LEFT' | 'RIGHT' | null
-  let lastHorizontalKey = null; // 'LEFT' | 'RIGHT' | null (supports instant direction reversal without stopping)
-
   function updatePlayerSpeedFromSettings() {
     const spd = (gameStateData.settings && gameStateData.settings.playerSpeed) || 'normal';
     if (spd === 'slow') {
-      PLAYER_SPEED = 3.60;
+      PLAYER_SPEED = 5.75;
     } else if (spd === 'fast') {
-      PLAYER_SPEED = 5.80;
+      PLAYER_SPEED = 8.25;
     } else {
-      PLAYER_SPEED = 4.50; // 'normal' default smooth speed
+      PLAYER_SPEED = 6.60; // 'normal' default (+50% increase)
     }
   }
 
@@ -1559,11 +1531,11 @@
     if (typeof speedOrPreset === 'number') {
       PLAYER_SPEED = Math.max(1.0, Math.min(12.0, speedOrPreset));
     } else if (speedOrPreset === 'slow') {
-      PLAYER_SPEED = 3.60;
+      PLAYER_SPEED = 5.75;
     } else if (speedOrPreset === 'normal') {
-      PLAYER_SPEED = 4.50;
+      PLAYER_SPEED = 6.60;
     } else if (speedOrPreset === 'fast') {
-      PLAYER_SPEED = 5.80;
+      PLAYER_SPEED = 8.25;
     }
   }
 
@@ -1572,9 +1544,6 @@
   let isCameraTrackingLoopRunning = false;
   let mediaPipeHandsInstance = null;
   let isMediaPipeReady = false;
-  let isMediaPipeProcessing = false;
-  let lastCameraProcessTime = 0;
-  let lastInferenceDuration = 0;
 
   // =========================================================================
   // DUAL-HAND GESTURE ENGINE (RIGHT HAND = MOVEMENT, LEFT HAND = ATTACK)
@@ -1599,73 +1568,6 @@
   let previousLeftSmoothedLandmarks = null;
   let leftConfidence = 0;
 
-  // =========================================================================
-  // PERSISTENT HAND LOCK & IDENTITY CONTINUITY TRACKER
-  // Rules Enforced:
-  // 1. "ONCE CONNECT TO THE HAND DON'T CHANGE TO ANOTHER HAND"
-  //    Maintains spatial identity continuity across frames using minimum Euclidean
-  //    distance bipartite assignment and position locking. Hands NEVER swap identities
-  //    or jump to another person's hand.
-  // 2. "IF THERE IS MULTIPLE HANDS TAKE ONLY 2 HANDS"
-  //    Strictly filters all detected hands down to at most 2 hands, prioritizing
-  //    active locked hands and front-and-center hands.
-  // =========================================================================
-  const handLockTracker = {
-    left: {
-      isLocked: false,
-      lastX: null,
-      lastY: null,
-      lostFrames: 0
-    },
-    right: {
-      isLocked: false,
-      lastX: null,
-      lastY: null,
-      lostFrames: 0
-    },
-    reset() {
-      this.left.isLocked = false;
-      this.left.lastX = null;
-      this.left.lastY = null;
-      this.left.lostFrames = 0;
-      this.right.isLocked = false;
-      this.right.lastX = null;
-      this.right.lastY = null;
-      this.right.lostFrames = 0;
-    }
-  };
-
-  const MAX_LOST_FRAMES_TOLERANCE = 24;      // ~0.8s grace period before releasing hand lock
-  const MAX_HAND_ASSOCIATION_DIST = 0.40;     // Maximum normalized Euclidean distance between consecutive frames
-
-  // =========================================================================
-  // TWO-HAND INSTANT DETECTION & TRACKING SYSTEM
-  // No blocking calibration: both 1-hand and 2-hand gestures work instantly from frame 1
-  let handCalibState = 'registered';
-  let calibLockFrames = 0;
-  let registeredHand1 = null;
-  let registeredHand2 = null;
-
-  function resetHandCalibration() {
-    handCalibState = 'registered';
-    calibLockFrames = 0;
-    registeredHand1 = null;
-    registeredHand2 = null;
-  }
-
-  /** Always allows hands without rejection or distance dropping */
-  function isRegisteredHand(cx, cy) {
-    return true;
-  }
-
-  function updateRegisteredCentroids(c1x, c1y, c2x, c2y) {
-    // Kept as no-op for compatibility
-  }
-
-  function _ensureCalibOverlay() {}
-  function _updateCalibUI() {}
-  function processHandCalibration(rawCandidates, isMirror) {}
-
   let leftFistHeld = false;         // Fist hold guard on left hand: triggers 1 punch per fist
   let lastLeftAttackTime = 0;       // 500ms cooldown timer
   let rightFistHeld = false;        // Backward-compatibility alias
@@ -1687,12 +1589,6 @@
   cvCanvas.width = 160;
   cvCanvas.height = 120;
   const cvCtx = cvCanvas.getContext('2d', { willReadFrequently: true });
-
-  // Downscaled canvas for MediaPipe input (cuts GPU texture upload by ~95%)
-  const mpInputCanvas = document.createElement('canvas');
-  mpInputCanvas.width = 320;
-  mpInputCanvas.height = 240;
-  const mpInputCtx = mpInputCanvas.getContext('2d', { alpha: false, desynchronized: true });
 
   // DOM Elements
   const videoEl = document.getElementById('webcam-video');
@@ -1724,10 +1620,10 @@
     'RIGHT': '👉',
     'UP': '☝️',
     'DOWN': '👇',
-    'UP_RIGHT': '↗️',
     'UP_LEFT': '↖️',
-    'DOWN_RIGHT': '↘️',
+    'UP_RIGHT': '↗️',
     'DOWN_LEFT': '↙️',
+    'DOWN_RIGHT': '↘️',
     'ATTACK': '✊',
     'READY': '✋',
     'NONE': '✋'
@@ -1735,39 +1631,24 @@
 
   /**
    * 1. initializeHandTracking()
-   * Configures MediaPipe Hands with memory leak protection and single/dual hand support
+   * Configures MediaPipe Hands for TWO HANDS simultaneously (maxNumHands: 2)
    */
   function initializeHandTracking() {
     if (window.Hands) {
       try {
-        const complexity = (gameStateData.settings && typeof gameStateData.settings.modelComplexity === 'number')
-          ? gameStateData.settings.modelComplexity : 0;
-
-        if (mediaPipeHandsInstance) {
-          // Reuse existing instance without leaking WASM linear memory
-          mediaPipeHandsInstance.setOptions({
-            maxNumHands: 2,
-            modelComplexity: complexity,
-            minDetectionConfidence: 0.48,
-            minTrackingConfidence: 0.45
-          });
-          isMediaPipeReady = true;
-          return;
-        }
-
         mediaPipeHandsInstance = new window.Hands({
           locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
         mediaPipeHandsInstance.setOptions({
-          maxNumHands: 2,
-          modelComplexity: complexity,
-          minDetectionConfidence: 0.48,
-          minTrackingConfidence: 0.45
+          maxNumHands: 2, // TWO HANDS SIMULTANEOUSLY!
+          modelComplexity: 0,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
         });
         mediaPipeHandsInstance.onResults(handleMediaPipeResults);
         isMediaPipeReady = true;
       } catch (err) {
-        console.warn('MediaPipe initialization notice:', err);
+        console.warn('MediaPipe initialization fallback to CV:', err);
         isMediaPipeReady = false;
       }
     }
@@ -1776,7 +1657,6 @@
   /**
    * 2. startCamera()
    * Requests camera access using navigator.mediaDevices.getUserMedia()
-   * Applies optimal lightweight stream constraints to prevent browser buffer bloat
    */
   async function startCamera() {
     try {
@@ -1784,15 +1664,12 @@
         throw new Error('getUserMedia not supported in this browser environment.');
       }
 
-      const camConstraints = {
-        facingMode: 'user',
-        width: { ideal: 320, max: 640 },
-        height: { ideal: 240, max: 480 },
-        frameRate: { ideal: 20, max: 30 }
-      };
-
       webcamStream = await navigator.mediaDevices.getUserMedia({
-        video: camConstraints,
+        video: {
+          facingMode: 'user',
+          width: { ideal: 320 },
+          height: { ideal: 240 }
+        },
         audio: false
       });
 
@@ -1809,8 +1686,8 @@
       }
 
       if (overlayCanvas && videoEl) {
-        overlayCanvas.width = Math.min(320, videoEl.videoWidth || 320);
-        overlayCanvas.height = Math.min(240, videoEl.videoHeight || 240);
+        overlayCanvas.width = videoEl.videoWidth || 320;
+        overlayCanvas.height = videoEl.videoHeight || 240;
       }
 
       initializeHandTracking();
@@ -1831,12 +1708,10 @@
   /**
    * 3. stopCamera()
    * Stops camera streams and tracking loops
-   * Frees WebAssembly memory when appropriate
    */
   function stopCamera() {
     isCameraActive = false;
     isCameraTrackingLoopRunning = false;
-    isMediaPipeProcessing = false;
     if (webcamStream) {
       webcamStream.getTracks().forEach(track => track.stop());
       webcamStream = null;
@@ -1847,17 +1722,6 @@
     if (overlayCtx && overlayCanvas) {
       overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     }
-
-    if (gameStateData.settings && (gameStateData.settings.perfProfile === 'low_ram' || gameStateData.settings.cameraEngine === 'cv') && mediaPipeHandsInstance) {
-      try {
-        if (typeof mediaPipeHandsInstance.close === 'function') {
-          mediaPipeHandsInstance.close();
-        }
-      } catch (e) {}
-      mediaPipeHandsInstance = null;
-      isMediaPipeReady = false;
-    }
-
     detectedHandsCount = 0;
     leftHandDetected = false;
     rightHandDetected = false;
@@ -1871,8 +1735,6 @@
     previousLeftSmoothedLandmarks = null;
     previousRightSmoothedLandmarks = null;
     previousSmoothedLandmarks = null;
-    handLockTracker.reset();
-    resetHandCalibration();
     stopPlayer();
     updateTwoHandUIFeedback();
     if (hudCamPill) hudCamPill.textContent = 'CAMERA OFF';
@@ -1884,53 +1746,26 @@
 
   /**
    * Continuous camera processing loop using requestAnimationFrame
-   * HIGH-PERFORMANCE LOW-RAM & LOW-CPU ENGINE:
-   * 1. Throttles tracking to target FPS (15-20 FPS in Low-RAM saves 75% CPU/memory bandwidth!)
-   * 2. Drops/skips frames if MediaPipe is still busy (zero queue lag, zero stutter)
-   * 3. Downscales input texture to 192x144 for ultra-low memory
-   * 4. Bypasses to native CV when cameraEngine === 'cv' (<1MB RAM)
    */
   function startCameraProcessingLoop() {
     if (isCameraTrackingLoopRunning) return;
     isCameraTrackingLoopRunning = true;
 
-    async function processFrame(now) {
+    async function processFrame() {
       if (!isCameraActive) {
         isCameraTrackingLoopRunning = false;
-        isMediaPipeProcessing = false;
         return;
       }
 
-      if (!isMediaPipeProcessing) {
-
-        if (videoEl && videoEl.readyState >= 2) {
-          if (isMediaPipeReady && mediaPipeHandsInstance) {
-            isMediaPipeProcessing = true;
-            const tStart = performance.now();
-
-            // Optimal resolution for high & low laptops: 256x192 uses <35MB RAM and ~10% CPU
-            const targetW = 256;
-            const targetH = 192;
-            if (mpInputCanvas.width !== targetW || mpInputCanvas.height !== targetH) {
-              mpInputCanvas.width = targetW;
-              mpInputCanvas.height = targetH;
-            }
-            mpInputCtx.drawImage(videoEl, 0, 0, targetW, targetH);
-
-            try {
-              await mediaPipeHandsInstance.send({ image: mpInputCanvas });
-              lastInferenceDuration = performance.now() - tStart;
-            } catch (e) {
-              console.warn('MediaPipe send frame notice:', e);
-            } finally {
-              isMediaPipeProcessing = false;
-            }
-          } else {
-            // MediaPipe is still initializing or downloading assets: DO NOT execute fake inputs!
-            initializeHandTracking();
-            handleTwoHandGestures('NONE', 'NONE');
-            if (camFeedbackStatus) camFeedbackStatus.textContent = 'STATUS: INITIALIZING AI MODEL...';
+      if (videoEl && videoEl.readyState >= 2) {
+        if (isMediaPipeReady && mediaPipeHandsInstance) {
+          try {
+            await mediaPipeHandsInstance.send({ image: videoEl });
+          } catch (e) {
+            processNativeCVFrame();
           }
+        } else {
+          processNativeCVFrame();
         }
       }
 
@@ -1941,44 +1776,22 @@
   }
 
   /**
-   * 6a. isOpenPalm(landmarks)
-   * Validates if hand is open/neutral ✋ (All fingers extended, palm facing forward)
-   * Open palm = Neutral = Stop moving!
-   */
-  function isOpenPalm(landmarks) {
-    if (!landmarks || landmarks.length < 21) return false;
-    const wrist = landmarks[0];
-    const tips = [8, 12, 16, 20];
-    const pips = [6, 10, 14, 18];
-    let extendedCount = 0;
-    for (let i = 0; i < 4; i++) {
-      const dTip = Math.hypot(landmarks[tips[i]].x - wrist.x, landmarks[tips[i]].y - wrist.y);
-      const dPip = Math.hypot(landmarks[pips[i]].x - wrist.x, landmarks[pips[i]].y - wrist.y);
-      if (dTip > dPip * 1.15) {
-        extendedCount++;
-      }
-    }
-    return extendedCount >= 3;
-  }
-
-  /**
-   * 6b. isIndexFingerExtended(landmarks)
-   * Validates that index finger is extended and other fingers are folded (Pointing gesture)
+   * 6. isIndexFingerExtended(landmarks)
+   * Validates that index finger is extended and other fingers are folded (Section 4)
    */
   function isIndexFingerExtended(landmarks) {
     if (!landmarks || landmarks.length < 21) return false;
     const wrist = landmarks[0];
 
-    // Index finger tip (8), PIP (6), MCP (5)
+    // Index finger tip (8), DIP (7), PIP (6), MCP (5)
     const dTipWrist = Math.hypot(landmarks[8].x - wrist.x, landmarks[8].y - wrist.y);
     const dPipWrist = Math.hypot(landmarks[6].x - wrist.x, landmarks[6].y - wrist.y);
     const dTipMcp = Math.hypot(landmarks[8].x - landmarks[5].x, landmarks[8].y - landmarks[5].y);
 
-    // Index extended: tip distinctly further from wrist than PIP
-    const indexExtended = (dTipWrist > dPipWrist * 1.10) && (dTipMcp > 0.035);
-    if (!indexExtended) return false;
+    // Index must be clearly extended away from wrist and MCP
+    const indexExtended = (dTipWrist > dPipWrist * 1.12) && (dTipMcp > 0.065);
 
-    // Check if at least 2 other fingers (middle 12, ring 16, pinky 20) are folded
+    // Other fingers (middle 12, ring 16, pinky 20) should preferably be folded towards palm
     const dMiddleTip = Math.hypot(landmarks[12].x - wrist.x, landmarks[12].y - wrist.y);
     const dMiddlePip = Math.hypot(landmarks[10].x - wrist.x, landmarks[10].y - wrist.y);
     const middleFolded = dMiddleTip < dMiddlePip * 1.25;
@@ -1992,22 +1805,23 @@
     const pinkyFolded = dPinkyTip < dPinkyPip * 1.25;
 
     const foldedCount = (middleFolded ? 1 : 0) + (ringFolded ? 1 : 0) + (pinkyFolded ? 1 : 0);
-    return foldedCount >= 2;
+
+    return indexExtended && (foldedCount >= 1);
   }
 
   /**
    * 7. isFist(landmarks)
-   * Validates that player hand is in a closed fist ✊ (All 4 fingers curled)
+   * Validates that player hand is in a closed fist ✊ (Section 8)
    */
   function isFist(landmarks) {
     if (!landmarks || landmarks.length < 21) return false;
     const wrist = landmarks[0];
 
-    // Index finger must NOT be extended!
+    // Index finger must NOT be extended! (Section 13 Priority)
     const dIndexTip = Math.hypot(landmarks[8].x - wrist.x, landmarks[8].y - wrist.y);
     const dIndexPip = Math.hypot(landmarks[6].x - wrist.x, landmarks[6].y - wrist.y);
-    if (dIndexTip > dIndexPip * 1.15) {
-      return false;
+    if (dIndexTip > dIndexPip * 1.1) {
+      return false; // Index is pointing out! Cannot be a fist.
     }
 
     const tips = [8, 12, 16, 20];
@@ -2017,405 +1831,126 @@
     for (let i = 0; i < 4; i++) {
       const tipDist = Math.hypot(landmarks[tips[i]].x - wrist.x, landmarks[tips[i]].y - wrist.y);
       const mcpDist = Math.hypot(landmarks[mcps[i]].x - wrist.x, landmarks[mcps[i]].y - wrist.y);
-      if (tipDist < mcpDist * 1.22) {
+      if (tipDist < mcpDist * 1.15) {
         foldedCount++;
       }
     }
 
-    return foldedCount >= 3;
+    // Thumb curled in check (thumb tip 4 close to index MCP 5 or wrist)
+    const thumbDist = Math.hypot(landmarks[4].x - landmarks[5].x, landmarks[4].y - landmarks[5].y);
+    const thumbIn = thumbDist < 0.16;
+
+    return (foldedCount === 4) || (foldedCount >= 3 && thumbIn);
   }
 
   /**
    * 5. detectPointDirection(landmarks)
-   * Calculates pointing direction ONLY when user intentionally points.
-   * Open Hand ✋ -> Returns null (NONE / STOP).
-   * Closed Fist ✊ -> Returns null (ATTACK handled separately).
-   * 👈 LEFT, 👉 RIGHT, ☝️ UP, 👇 DOWN
-   * Strict Cardinal Directions: Horizontal pointing/turning NEVER triggers UP/JUMP!
+   * Calculates index finger pointing vector: INDEX TIP - INDEX MCP (Section 3)
+   * Supports Cardinal (LEFT, RIGHT, UP, DOWN) and Simultaneous Diagonals (UP_RIGHT, UP_LEFT, DOWN_RIGHT, DOWN_LEFT)
    */
   function detectPointDirection(landmarks) {
     if (!landmarks || landmarks.length < 21) return null;
-    if (isFist(landmarks)) return null;
-    // Neutral open hand = STOP (no movement)
-    if (isOpenPalm(landmarks)) return null;
+    if (!isIndexFingerExtended(landmarks)) return null;
 
     const isMirror = gameStateData.settings.mirrorCamera !== false;
+    const tipX = isMirror ? (1 - landmarks[8].x) : landmarks[8].x;
+    const mcpX = isMirror ? (1 - landmarks[5].x) : landmarks[5].x;
+    const tipY = landmarks[8].y;
+    const mcpY = landmarks[5].y;
 
-    // A. Check clear intentional index finger pointing
-    if (isIndexFingerExtended(landmarks)) {
-      const tipX = isMirror ? (1 - landmarks[8].x) : landmarks[8].x;
-      const mcpX = isMirror ? (1 - landmarks[5].x) : landmarks[5].x;
-      const tipY = landmarks[8].y;
-      const mcpY = landmarks[5].y;
+    const dx = tipX - mcpX;
+    const dy = tipY - mcpY;
 
-      const dx = tipX - mcpX;
-      const dy = tipY - mcpY;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
-      const threshold = 0.030;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    const threshold = 0.038; // Minimum vector displacement
 
-      if (Math.hypot(dx, dy) >= threshold) {
-        // Strict separation: If horizontal movement is present, prioritize LEFT / RIGHT
-        // Turning or pointing to the side NEVER triggers UP/JUMP!
-        if (absDx >= absDy * 0.90) {
-          return dx > 0 ? 'RIGHT' : 'LEFT';
-        } else {
-          // Strictly vertical:
-          return dy < 0 ? 'UP' : 'DOWN';
-        }
-      }
+    const magnitude = Math.hypot(dx, dy);
+    if (magnitude < threshold) return null;
+
+    // Simultaneous Diagonal Pointing (both horizontal and vertical components active)
+    if (absDx > 0.028 && absDy > 0.028) {
+      if (dx > 0 && dy < 0) return 'UP_RIGHT';
+      if (dx < 0 && dy < 0) return 'UP_LEFT';
+      if (dx > 0 && dy > 0) return 'DOWN_RIGHT';
+      if (dx < 0 && dy > 0) return 'DOWN_LEFT';
     }
 
-    // B. Hand Tilt / Hand Turn Fallback (When turning hand to side without a tight fist)
-    const wrist = landmarks[0];
-    const mcpMiddle = landmarks[9];
-    const screenWristX = isMirror ? (1 - wrist.x) : wrist.x;
-    const screenMcpX = isMirror ? (1 - mcpMiddle.x) : mcpMiddle.x;
-    const tiltDx = screenMcpX - screenWristX;
-    const tiltDy = mcpMiddle.y - wrist.y;
-    const absTiltX = Math.abs(tiltDx);
-    const absTiltY = Math.abs(tiltDy);
-
-    // If clearly tilted/turned to the side:
-    if (absTiltX >= 0.08) {
-      if (absTiltX >= absTiltY * 0.85) {
-        return tiltDx > 0 ? 'RIGHT' : 'LEFT';
-      }
+    // Dominant Cardinal directions
+    if (absDx > absDy) {
+      return dx < 0 ? 'LEFT' : 'RIGHT';
+    } else {
+      return dy < 0 ? 'UP' : 'DOWN';
     }
-
-    // Strictly vertical jump tilt: only if almost vertical with strong upward reach
-    if (tiltDy < -0.12 && absTiltX < 0.07) {
-      return 'UP'; // Jump
-    }
-    if (tiltDy > 0.09 && absTiltX < 0.07) {
-      return 'DOWN'; // Crouch
-    }
-
-    return null;
   }
 
   /**
-   * Anatomical Hand Validation Filter:
-   * STRICT: ONLY SENSES REAL HUMAN HANDS!
-   * Rejects faces, heads, noses, shirts, collars, yellow walls, shadows, and background objects.
+   * 4. detectHandGesture(landmarks)
+   * Enforces strict Gesture Priority (Section 13):
+   * 1. ✊ FIST -> ATTACK
+   * 2. 👈 LEFT
+   * 3. 👉 RIGHT
+   * 4. ☝️ UP
+   * 5. 👇 DOWN
+   * 6. Open / unclear hand -> NONE
    */
-  function isGenuineHandLandmarks(lm, hInfo = null) {
-    if (!lm || lm.length < 21) return false;
-
-    // 1. Confidence Threshold: Allow both primary and secondary hands (>= 0.38)
-    if (hInfo && typeof hInfo.score === 'number' && hInfo.score < 0.38) {
-      return false;
-    }
-
-    const wrist = lm[0];
-    const mcpMiddle = lm[9];
-    const mcpIndex = lm[5];
-    const mcpPinky = lm[17];
-
-    // 2. Palm size: Flexible to fists, angled hands, and open hands
-    const palmLength = Math.hypot(mcpMiddle.x - wrist.x, mcpMiddle.y - wrist.y);
-    const palmWidth = Math.hypot(mcpPinky.x - mcpIndex.x, mcpPinky.y - mcpIndex.y);
-
-    if (palmLength < 0.015 || palmLength > 0.65) return false;
-    if (palmWidth < 0.010 || palmWidth > 0.60) return false;
-
-    // 3. Bounding Box & Total Spread Check:
-    let minX = 1, maxX = 0, minY = 1, maxY = 0;
-    for (let i = 0; i < 21; i++) {
-      const p = lm[i];
-      if (p.x < minX) minX = p.x;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.y > maxY) maxY = p.y;
-    }
-    const boxW = maxX - minX;
-    const boxH = maxY - minY;
-    const boxCx = (minX + maxX) / 2;
-    const boxCy = (minY + maxY) / 2;
-
-    if (boxW > 0.65 || boxH > 0.70) return false; // Too large to be a single hand
-    if (boxW < 0.03 || boxH < 0.03) return false; // Microscopic noise
-
-    // 4. Strict Face & Head Exclusion:
-    // Only exclude if landmarks squarely occupy the user's upper head/face:
-    if (boxCx > 0.30 && boxCx < 0.70 && boxCy < 0.38 && boxH > 0.30 && boxW > 0.28) {
-      if (wrist.y < 0.45) {
-        return false; // Matched face/head bounding box
-      }
-    }
-
-    return true;
-  }
-
   /**
-   * Classifies detected hands into LEFT HAND (Attack) and RIGHT HAND (Movement).
-   * Enforces 2-hand limit and persistent identity locking.
+   * Classifies detected hands into LEFT HAND (Movement) and RIGHT HAND (Attack)
+   * Uses both MediaPipe handedness label and screen coordinates (taking mirroring into account).
    */
   function classifyTwoHands(multiLandmarks, multiHandedness, isMirror) {
     let leftHand = null;
     let rightHand = null;
 
     if (!multiLandmarks || multiLandmarks.length === 0) {
-      if (handLockTracker.left.isLocked) {
-        handLockTracker.left.lostFrames++;
-        if (handLockTracker.left.lostFrames > MAX_LOST_FRAMES_TOLERANCE) {
-          handLockTracker.left.isLocked = false;
-          handLockTracker.left.lastX = null;
-          handLockTracker.left.lastY = null;
-          handLockTracker.left.lostFrames = 0;
-        }
+      return { leftHand, rightHand };
+    }
+
+    if (multiLandmarks.length === 1) {
+      const lm = multiLandmarks[0];
+      const hInfo = (multiHandedness && multiHandedness[0]) ? multiHandedness[0] : null;
+      const label = hInfo ? hInfo.label : null;
+      const screenX = isMirror ? (1 - lm[0].x) : lm[0].x;
+
+      // In mirrored selfie camera:
+      // MediaPipe label 'Right' -> user's physical LEFT hand
+      // MediaPipe label 'Left' -> user's physical RIGHT hand
+      let isLeft = false;
+      if (label) {
+        isLeft = isMirror ? (label === 'Right') : (label === 'Left');
+      } else {
+        isLeft = screenX < 0.5;
       }
-      if (handLockTracker.right.isLocked) {
-        handLockTracker.right.lostFrames++;
-        if (handLockTracker.right.lostFrames > MAX_LOST_FRAMES_TOLERANCE) {
-          handLockTracker.right.isLocked = false;
-          handLockTracker.right.lastX = null;
-          handLockTracker.right.lastY = null;
-          handLockTracker.right.lostFrames = 0;
-        }
+
+      // Spatial priority if hand is distinctly on one side of screen
+      if (screenX < 0.40) isLeft = true;
+      else if (screenX > 0.60) isLeft = false;
+
+      if (isLeft) {
+        leftHand = { landmarks: lm, handedness: hInfo };
+      } else {
+        rightHand = { landmarks: lm, handedness: hInfo };
       }
       return { leftHand, rightHand };
     }
 
-    // Step 1: Extract candidate hand data (ONLY GENUINE HANDS - STRICT HEAD/FACE EXCLUSION)
-    const rawCandidates = [];
-    for (let i = 0; i < multiLandmarks.length; i++) {
-      const lm = multiLandmarks[i];
-      if (!lm || lm.length < 21) continue;
-      const hInfo = (multiHandedness && multiHandedness[i]) ? multiHandedness[i] : null;
+    // Exactly 2 hands detected simultaneously!
+    const lmA = multiLandmarks[0];
+    const lmB = multiLandmarks[1];
+    const hInfoA = (multiHandedness && multiHandedness[0]) ? multiHandedness[0] : null;
+    const hInfoB = (multiHandedness && multiHandedness[1]) ? multiHandedness[1] : null;
 
-      // STRICT FILTER: Reject heads, faces, or non-hand noise
-      if (!isGenuineHandLandmarks(lm, hInfo)) {
-        continue;
-      }
+    const screenXA = isMirror ? (1 - lmA[0].x) : lmA[0].x;
+    const screenXB = isMirror ? (1 - lmB[0].x) : lmB[0].x;
 
-      const wrist = lm[0];
-      const mcp = lm[9];
-      const rawCx = (wrist.x + mcp.x) / 2;
-      const rawCy = (wrist.y + mcp.y) / 2;
-      const screenX = isMirror ? (1 - rawCx) : rawCx;
-      const screenY = rawCy;
-      const palmSize = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y);
-
-      rawCandidates.push({
-        index: i,
-        landmarks: lm,
-        handedness: hInfo,
-        screenX,
-        screenY,
-        palmSize
-      });
-    }
-
-    if (rawCandidates.length === 0) {
-      return { leftHand, rightHand };
-    }
-
-    // Step 2: "IF THERE IS MULTIPLE HANDS TAKE ONLY 2 HANDS"
-    // Prioritize candidates closest to our currently locked hands, then by size
-    rawCandidates.forEach(cand => {
-      let priorityScore = cand.palmSize * 2.0;
-      if (handLockTracker.left.isLocked && handLockTracker.left.lastX !== null) {
-        const dL = Math.hypot(cand.screenX - handLockTracker.left.lastX, cand.screenY - handLockTracker.left.lastY);
-        if (dL < MAX_HAND_ASSOCIATION_DIST) {
-          priorityScore += (MAX_HAND_ASSOCIATION_DIST - dL) * 15;
-        }
-      }
-      if (handLockTracker.right.isLocked && handLockTracker.right.lastX !== null) {
-        const dR = Math.hypot(cand.screenX - handLockTracker.right.lastX, cand.screenY - handLockTracker.right.lastY);
-        if (dR < MAX_HAND_ASSOCIATION_DIST) {
-          priorityScore += (MAX_HAND_ASSOCIATION_DIST - dR) * 15;
-        }
-      }
-      cand.priority = priorityScore;
-    });
-
-    rawCandidates.sort((a, b) => b.priority - a.priority);
-    // TAKE AT MOST 2 HANDS:
-    const activeCandidates = rawCandidates.slice(0, 2);
-
-    // Step 3: "ONCE CONNECT TO THE HAND DON'T CHANGE TO ANOTHER HAND"
-    // Persistent Slot Matching & Identity Locking
-    const leftLocked = handLockTracker.left.isLocked && handLockTracker.left.lastX !== null;
-    const rightLocked = handLockTracker.right.isLocked && handLockTracker.right.lastX !== null;
-
-    if (leftLocked && rightLocked) {
-      // Both slots locked: find optimal assignment to existing locks without swapping
-      if (activeCandidates.length === 2) {
-        const c0 = activeCandidates[0];
-        const c1 = activeCandidates[1];
-        const dist0L = Math.hypot(c0.screenX - handLockTracker.left.lastX, c0.screenY - handLockTracker.left.lastY);
-        const dist1R = Math.hypot(c1.screenX - handLockTracker.right.lastX, c1.screenY - handLockTracker.right.lastY);
-        const dist1L = Math.hypot(c1.screenX - handLockTracker.left.lastX, c1.screenY - handLockTracker.left.lastY);
-        const dist0R = Math.hypot(c0.screenX - handLockTracker.right.lastX, c0.screenY - handLockTracker.right.lastY);
-
-        if ((dist0L + dist1R) <= (dist1L + dist0R)) {
-          leftHand = { landmarks: c0.landmarks, handedness: c0.handedness };
-          rightHand = { landmarks: c1.landmarks, handedness: c1.handedness };
-          handLockTracker.left.lastX = c0.screenX;
-          handLockTracker.left.lastY = c0.screenY;
-          handLockTracker.left.lostFrames = 0;
-          handLockTracker.right.lastX = c1.screenX;
-          handLockTracker.right.lastY = c1.screenY;
-          handLockTracker.right.lostFrames = 0;
-        } else {
-          leftHand = { landmarks: c1.landmarks, handedness: c1.handedness };
-          rightHand = { landmarks: c0.landmarks, handedness: c0.handedness };
-          handLockTracker.left.lastX = c1.screenX;
-          handLockTracker.left.lastY = c1.screenY;
-          handLockTracker.left.lostFrames = 0;
-          handLockTracker.right.lastX = c0.screenX;
-          handLockTracker.right.lastY = c0.screenY;
-          handLockTracker.right.lostFrames = 0;
-        }
-      } else if (activeCandidates.length === 1) {
-        // Only 1 hand currently visible: match to whichever locked slot is closer
-        const c = activeCandidates[0];
-        const distL = Math.hypot(c.screenX - handLockTracker.left.lastX, c.screenY - handLockTracker.left.lastY);
-        const distR = Math.hypot(c.screenX - handLockTracker.right.lastX, c.screenY - handLockTracker.right.lastY);
-
-        if (distL < distR && distL < MAX_HAND_ASSOCIATION_DIST * 1.5) {
-          leftHand = { landmarks: c.landmarks, handedness: c.handedness };
-          handLockTracker.left.lastX = c.screenX;
-          handLockTracker.left.lastY = c.screenY;
-          handLockTracker.left.lostFrames = 0;
-          handLockTracker.right.lostFrames++;
-        } else if (distR <= distL && distR < MAX_HAND_ASSOCIATION_DIST * 1.5) {
-          rightHand = { landmarks: c.landmarks, handedness: c.handedness };
-          handLockTracker.right.lastX = c.screenX;
-          handLockTracker.right.lastY = c.screenY;
-          handLockTracker.right.lostFrames = 0;
-          handLockTracker.left.lostFrames++;
-        } else {
-          if (distR <= distL) {
-            rightHand = { landmarks: c.landmarks, handedness: c.handedness };
-            handLockTracker.right.lastX = c.screenX;
-            handLockTracker.right.lastY = c.screenY;
-            handLockTracker.right.lostFrames = 0;
-            handLockTracker.left.lostFrames++;
-          } else {
-            leftHand = { landmarks: c.landmarks, handedness: c.handedness };
-            handLockTracker.left.lastX = c.screenX;
-            handLockTracker.left.lastY = c.screenY;
-            handLockTracker.left.lostFrames = 0;
-            handLockTracker.right.lostFrames++;
-          }
-        }
-      }
-    } else if (rightLocked && !leftLocked) {
-      let bestRightIdx = -1;
-      let minRightDist = MAX_HAND_ASSOCIATION_DIST * 1.5;
-      activeCandidates.forEach((c, idx) => {
-        const d = Math.hypot(c.screenX - handLockTracker.right.lastX, c.screenY - handLockTracker.right.lastY);
-        if (d < minRightDist) {
-          minRightDist = d;
-          bestRightIdx = idx;
-        }
-      });
-
-      if (bestRightIdx !== -1) {
-        const cRight = activeCandidates[bestRightIdx];
-        rightHand = { landmarks: cRight.landmarks, handedness: cRight.handedness };
-        handLockTracker.right.lastX = cRight.screenX;
-        handLockTracker.right.lastY = cRight.screenY;
-        handLockTracker.right.lostFrames = 0;
-
-        const otherCand = activeCandidates.find((_, idx) => idx !== bestRightIdx);
-        if (otherCand) {
-          leftHand = { landmarks: otherCand.landmarks, handedness: otherCand.handedness };
-          handLockTracker.left.isLocked = true;
-          handLockTracker.left.lastX = otherCand.screenX;
-          handLockTracker.left.lastY = otherCand.screenY;
-          handLockTracker.left.lostFrames = 0;
-        }
-      } else {
-        handLockTracker.right.lostFrames++;
-      }
-    } else if (leftLocked && !rightLocked) {
-      let bestLeftIdx = -1;
-      let minLeftDist = MAX_HAND_ASSOCIATION_DIST * 1.5;
-      activeCandidates.forEach((c, idx) => {
-        const d = Math.hypot(c.screenX - handLockTracker.left.lastX, c.screenY - handLockTracker.left.lastY);
-        if (d < minLeftDist) {
-          minLeftDist = d;
-          bestLeftIdx = idx;
-        }
-      });
-
-      if (bestLeftIdx !== -1) {
-        const cLeft = activeCandidates[bestLeftIdx];
-        leftHand = { landmarks: cLeft.landmarks, handedness: cLeft.handedness };
-        handLockTracker.left.lastX = cLeft.screenX;
-        handLockTracker.left.lastY = cLeft.screenY;
-        handLockTracker.left.lostFrames = 0;
-
-        const otherCand = activeCandidates.find((_, idx) => idx !== bestLeftIdx);
-        if (otherCand) {
-          rightHand = { landmarks: otherCand.landmarks, handedness: otherCand.handedness };
-          handLockTracker.right.isLocked = true;
-          handLockTracker.right.lastX = otherCand.screenX;
-          handLockTracker.right.lastY = otherCand.screenY;
-          handLockTracker.right.lostFrames = 0;
-        }
-      } else {
-        handLockTracker.left.lostFrames++;
-      }
+    // The hand further to the left in user's view (smaller screenX) is LEFT hand (Attack)
+    // The hand further to the right in user's view (larger screenX) is RIGHT hand (Movement)
+    if (screenXA < screenXB) {
+      leftHand = { landmarks: lmA, handedness: hInfoA };
+      rightHand = { landmarks: lmB, handedness: hInfoB };
     } else {
-      // Neither hand locked: INITIAL CONNECTION
-      if (activeCandidates.length === 2) {
-        const [cA, cB] = activeCandidates;
-        const [cLeft, cRight] = (cA.screenX < cB.screenX) ? [cA, cB] : [cB, cA];
-
-        leftHand = { landmarks: cLeft.landmarks, handedness: cLeft.handedness };
-        rightHand = { landmarks: cRight.landmarks, handedness: cRight.handedness };
-
-        handLockTracker.left.isLocked = true;
-        handLockTracker.left.lastX = cLeft.screenX;
-        handLockTracker.left.lastY = cLeft.screenY;
-        handLockTracker.left.lostFrames = 0;
-
-        handLockTracker.right.isLocked = true;
-        handLockTracker.right.lastX = cRight.screenX;
-        handLockTracker.right.lastY = cRight.screenY;
-        handLockTracker.right.lostFrames = 0;
-      } else if (activeCandidates.length === 1) {
-        const c = activeCandidates[0];
-        const label = c.handedness ? c.handedness.label : null;
-        let isLeft = false;
-        if (label) {
-          isLeft = isMirror ? (label === 'Right') : (label === 'Left');
-        } else {
-          isLeft = c.screenX < 0.48;
-        }
-
-        if (isLeft) {
-          leftHand = { landmarks: c.landmarks, handedness: c.handedness };
-          handLockTracker.left.isLocked = true;
-          handLockTracker.left.lastX = c.screenX;
-          handLockTracker.left.lastY = c.screenY;
-          handLockTracker.left.lostFrames = 0;
-        } else {
-          rightHand = { landmarks: c.landmarks, handedness: c.handedness };
-          handLockTracker.right.isLocked = true;
-          handLockTracker.right.lastX = c.screenX;
-          handLockTracker.right.lastY = c.screenY;
-          handLockTracker.right.lostFrames = 0;
-        }
-      }
-    }
-
-    // Check timeout for lost locked hands
-    if (handLockTracker.left.lostFrames > MAX_LOST_FRAMES_TOLERANCE) {
-      handLockTracker.left.isLocked = false;
-      handLockTracker.left.lastX = null;
-      handLockTracker.left.lastY = null;
-      handLockTracker.left.lostFrames = 0;
-    }
-    if (handLockTracker.right.lostFrames > MAX_LOST_FRAMES_TOLERANCE) {
-      handLockTracker.right.isLocked = false;
-      handLockTracker.right.lastX = null;
-      handLockTracker.right.lastY = null;
-      handLockTracker.right.lostFrames = 0;
+      leftHand = { landmarks: lmB, handedness: hInfoB };
+      rightHand = { landmarks: lmA, handedness: hInfoA };
     }
 
     return { leftHand, rightHand };
@@ -2458,17 +1993,14 @@
   }
 
   /**
-   * RIGHT HAND: MOVEMENT ONLY
-   * Evaluates index finger pointing direction (👈 LEFT, 👉 RIGHT, ☝️ UP, 👇 DOWN)
-   * Open or neutral hand ✋ -> NONE (stops movement)
-   * RIGHT HAND NEVER ATTACKS!
+   * Evaluates movement or attack for RIGHT HAND
+   * Supports: 👈 LEFT, 👉 RIGHT, ☝️ UP, 👇 DOWN, ↖️ UP_LEFT, ↗️ UP_RIGHT, ↙️ DOWN_LEFT, ↘️ DOWN_RIGHT, ✊ ATTACK
    */
   function detectRightHandMovement(landmarks) {
     if (!landmarks || landmarks.length < 21) return 'NONE';
+    if (isFist(landmarks)) return 'ATTACK';
     const pointDir = detectPointDirection(landmarks);
-    if (pointDir) {
-      return pointDir;
-    }
+    if (pointDir) return pointDir;
     return 'NONE';
   }
 
@@ -2476,22 +2008,14 @@
   const detectLeftHandMovement = detectRightHandMovement;
 
   /**
-   * LEFT HAND: ATTACK & DUAL-HAND ACTION
-   * Evaluates closed fist ✊ -> ATTACK
-   * Evaluates pointing ☝️ -> UP (Jump) or directional action
-   * Open or relaxed hand ✋ -> READY / NONE
+   * Evaluates movement or attack for LEFT HAND
+   * Supports: 👈 LEFT, 👉 RIGHT, ☝️ UP, 👇 DOWN, ↖️ UP_LEFT, ↗️ UP_RIGHT, ↙️ DOWN_LEFT, ↘️ DOWN_RIGHT, ✊ ATTACK
    */
   function detectLeftHandAttack(landmarks) {
     if (!landmarks || landmarks.length < 21) return 'NONE';
-    if (isFist(landmarks)) {
-      return 'ATTACK';
-    }
+    if (isFist(landmarks)) return 'ATTACK';
     const pointDir = detectPointDirection(landmarks);
-    if (pointDir === 'UP' || pointDir === 'UP_RIGHT' || pointDir === 'UP_LEFT') {
-      return 'UP';
-    } else if (pointDir) {
-      return pointDir;
-    }
+    if (pointDir) return pointDir;
     return 'READY';
   }
 
@@ -2499,7 +2023,7 @@
   const detectRightHandAttack = detectLeftHandAttack;
 
   /**
-   * 4. detectHandGesture(landmarks) - Single hand compatibility
+   * 4. detectHandGesture(landmarks) - Universal hand gesture recognizer
    */
   function detectHandGesture(landmarks) {
     if (!landmarks || landmarks.length < 21) return 'NONE';
@@ -2548,73 +2072,100 @@
   }
 
   /**
-   * Simultaneously processes LEFT HAND attack and RIGHT HAND movement
-   * Enforces 500ms attack cooldown on left-hand fist and continuous hold on right-hand move
+   * Helper: Extracts directional vector {x, y, atk} from any gesture string
+   */
+  function getGestureVector(g) {
+    let x = 0, y = 0, atk = false;
+    if (!g || g === 'NONE' || g === 'READY') return { x, y, atk };
+    if (g === 'ATTACK') { atk = true; return { x, y, atk }; }
+    if (g === 'LEFT') x = -1;
+    else if (g === 'RIGHT') x = 1;
+    else if (g === 'UP') y = -1;
+    else if (g === 'DOWN') y = 1;
+    else if (g === 'UP_LEFT') { x = -1; y = -1; }
+    else if (g === 'UP_RIGHT') { x = 1; y = -1; }
+    else if (g === 'DOWN_LEFT') { x = -1; y = 1; }
+    else if (g === 'DOWN_RIGHT') { x = 1; y = 1; }
+    return { x, y, atk };
+  }
+
+  /**
+   * Simultaneously processes DUAL SIGNS from BOTH HANDS or 1-hand diagonals:
+   * e.g. UP sign with one hand + RIGHT/LEFT sign with other hand = simultaneous jump + movement!
+   * Or single hand pointing diagonally (UP_RIGHT / UP_LEFT)!
+   * Or simultaneous Attack fist + Directional movement!
    */
   function handleTwoHandGestures(rawLeft, rawRight) {
     const now = performance.now();
 
-    // 1. LEFT HAND DEBOUNCE (Attack)
+    // 1. LEFT HAND GESTURE UPDATE (Immediate zero-latency response)
     if (rawLeft !== leftCandidateGesture) {
       leftCandidateGesture = rawLeft;
       leftCandidateStartTime = now;
-    }
-    if (now - leftCandidateStartTime >= 60) {
-      leftConfirmedGesture = leftCandidateGesture;
+      leftConfirmedGesture = rawLeft;
     }
 
-    // 2. RIGHT HAND DEBOUNCE (Movement)
+    // 2. RIGHT HAND GESTURE UPDATE (Immediate zero-latency response)
     if (rawRight !== rightCandidateGesture) {
       rightCandidateGesture = rawRight;
       rightCandidateStartTime = now;
-    }
-    const moveDebounceLimit = rightCandidateGesture === 'UP' ? 30 : GESTURE_DEBOUNCE_MS;
-    if (now - rightCandidateStartTime >= moveDebounceLimit) {
-      rightConfirmedGesture = rightCandidateGesture;
+      rightConfirmedGesture = rawRight;
     }
 
     // Compatibility alias
     confirmedActiveGesture = rightConfirmedGesture !== 'NONE' ? rightConfirmedGesture : leftConfirmedGesture;
 
-    // 3. EXECUTE ACTIONS SIMULTANEOUSLY ON GAME ENGINE
+    // 3. COMBINE BOTH SIGNS SIMULTANEOUSLY INTO ONE MULTI-AXIS MOVEMENT VECTOR!
+    const leftVec = getGestureVector(leftConfirmedGesture);
+    const rightVec = getGestureVector(rightConfirmedGesture);
+
+    let combinedX = leftVec.x + rightVec.x;
+    if (combinedX > 1) combinedX = 1;
+    if (combinedX < -1) combinedX = -1;
+
+    let combinedY = leftVec.y + rightVec.y;
+    if (combinedY > 1) combinedY = 1;
+    if (combinedY < -1) combinedY = -1;
+
+    const isAttacking = leftVec.atk || rightVec.atk;
+
+    // Sync multi-axis gesture state for game physics loop
+    if (combinedX !== 0 || combinedY !== 0) {
+      gestureInputState.x = combinedX;
+      gestureInputState.y = combinedY;
+      gestureInputState.active = true;
+      gestureInputState.timestamp = now;
+    } else {
+      gestureInputState.active = false;
+      gestureInputState.x = 0;
+      gestureInputState.y = 0;
+    }
+
+    // 4. EXECUTE ACTIONS SIMULTANEOUSLY ON GAME ENGINE
     if (currentGameInstance && currentGameInstance.state === 'PLAYING') {
-      // --- RIGHT HAND MOVEMENT EXECUTION ---
-      if (rightConfirmedGesture === 'LEFT' || rightConfirmedGesture === 'UP_LEFT' || rightConfirmedGesture === 'DOWN_LEFT') {
-        movePlayerLeft();
-      } else if (rightConfirmedGesture === 'RIGHT' || rightConfirmedGesture === 'UP_RIGHT' || rightConfirmedGesture === 'DOWN_RIGHT') {
-        movePlayerRight();
-      } else if (rightConfirmedGesture === 'UP') {
-        movePlayerUp();
-      } else if (rightConfirmedGesture === 'DOWN') {
-        movePlayerDown();
+      if (combinedX !== 0 || combinedY !== 0) {
+        currentGameInstance.applyMovementInputs(combinedX, combinedY);
       } else {
-        // 'NONE' or open hand neutral -> Stop player movement only if keyboard/touch is not active
-        if (activeKeys.size === 0 && touchMoveDirection === null) {
-          stopPlayer();
-        }
+        stopPlayer();
       }
 
-      // --- LEFT HAND ATTACK OR DUAL-HAND SECONDARY ACTION EXECUTION (SIMULTANEOUS!) ---
-      if (leftConfirmedGesture === 'ATTACK') {
-        // Enforce 500ms cooldown + 1 punch per fist
+      // SIMULTANEOUS ATTACK EXECUTION (Can attack while moving!)
+      if (isAttacking) {
         if (!attackLocked && !leftFistHeld && (now - lastLeftAttackTime >= ATTACK_COOLDOWN_MS)) {
           leftFistHeld = true;
-          rightFistHeld = true; // backward-compatibility alias
+          rightFistHeld = true;
           lastLeftAttackTime = now;
-          lastRightAttackTime = now; // backward-compatibility alias
-          triggerAttack(); // Calls the SAME triggerAttack() as the button!
+          lastRightAttackTime = now;
+          triggerAttack();
         }
-      } else if (leftConfirmedGesture === 'UP') {
-        // Dual-hand: Left hand pointing UP triggers Jump simultaneously with Right hand movement!
-        movePlayerUp();
-        leftFistHeld = false;
-        rightFistHeld = false;
       } else {
-        // Fist released / hand opened -> allow next punch
         leftFistHeld = false;
         rightFistHeld = false;
       }
     }
+
+    // Immediately sync HUD on-screen indicators and guide feedback
+    updateTwoHandUIFeedback();
   }
 
   /**
@@ -2670,11 +2221,8 @@
     if (p.isGrounded) {
       p.vy = -JUMP_FORCE;
       p.isGrounded = false;
-      p.jumpBuffer = 0;
       sound.playJump();
       currentGameInstance.addDustPuff(p.x, p.y + p.height / 2);
-    } else {
-      p.jumpBuffer = 0.20; // 200ms jump buffer for multi-key fluid jumps
     }
   }
 
@@ -2698,7 +2246,6 @@
    */
   function stopPlayer() {
     if (!currentGameInstance || !currentGameInstance.player || !currentGameInstance.player.isAlive) return;
-    if (activeKeys.size > 0 || touchMoveDirection !== null) return;
     const p = currentGameInstance.player;
     p.vx = 0;
     if (p.isGrounded && p.state !== 'attack') {
@@ -2710,11 +2257,26 @@
    * Helper router for keyboard and touch compatibility
    */
   function movePlayer(direction) {
-    if (direction === 'LEFT') movePlayerLeft();
-    else if (direction === 'RIGHT') movePlayerRight();
-    else if (direction === 'UP') movePlayerUp();
-    else if (direction === 'DOWN') movePlayerDown();
-    else stopPlayer();
+    if (!currentGameInstance) return;
+    if (direction === 'LEFT') {
+      currentGameInstance.applyMovementInputs(-1, 0);
+    } else if (direction === 'RIGHT') {
+      currentGameInstance.applyMovementInputs(1, 0);
+    } else if (direction === 'UP') {
+      currentGameInstance.applyMovementInputs(0, -1);
+    } else if (direction === 'DOWN') {
+      currentGameInstance.applyMovementInputs(0, 1);
+    } else if (direction === 'UP_LEFT') {
+      currentGameInstance.applyMovementInputs(-1, -1);
+    } else if (direction === 'UP_RIGHT') {
+      currentGameInstance.applyMovementInputs(1, -1);
+    } else if (direction === 'DOWN_LEFT') {
+      currentGameInstance.applyMovementInputs(-1, 1);
+    } else if (direction === 'DOWN_RIGHT') {
+      currentGameInstance.applyMovementInputs(1, 1);
+    } else {
+      stopPlayer();
+    }
   }
 
   /**
@@ -2767,8 +2329,8 @@
     const p = currentGameInstance.player;
     const level = currentGameInstance.currentLevel;
 
-    const ATTACK_RANGE_X = 54;
-    const ATTACK_RANGE_Y = 38;
+    const ATTACK_RANGE_X = 58;
+    const ATTACK_RANGE_Y = 42;
     const slashHitbox = {
       x: p.x + (p.facing * ATTACK_RANGE_X * 0.5),
       y: p.y,
@@ -2786,13 +2348,26 @@
       if (currentGameInstance.checkAABB(slashHitbox, enemy)) {
         hitAnyEnemy = true;
         enemy.health = (enemy.health || 1) - 1;
+        enemy.aiState = 'hurt';
+        enemy.hurtTimer = 0.25;
         currentGameInstance.addSlashEffect(enemy.x, enemy.y, p.facing);
+
         if (enemy.health <= 0) {
           enemy.isAlive = false;
-          currentGameInstance.addExplosion(enemy.x, enemy.y, '#ff007f', 28);
-          sound.playEnemyDefeat();
+          currentGameInstance.score = (currentGameInstance.score || 0) + 250;
+          currentGameInstance.runScore = (currentGameInstance.runScore || 0) + 250;
+          currentGameInstance.enemiesDefeated = (currentGameInstance.enemiesDefeated || 0) + 1;
+          currentGameInstance.addExplosion(enemy.x, enemy.y, '#ff007f', 30);
+          currentGameInstance.addFloatingText(enemy.x, enemy.y - 18, '+250', '#ff007f', 16);
+          if (sound.playEnemyHit) sound.playEnemyHit();
+          else sound.playEnemyDefeat();
+          if (currentGameInstance.checkMissionProgress) {
+            currentGameInstance.checkMissionProgress('defeat', 1);
+          }
+          if (currentGameInstance.updateHUD) currentGameInstance.updateHUD();
         } else {
           sound.playAttack('swift');
+          currentGameInstance.addFloatingText(enemy.x, enemy.y - 14, '-1 HP', '#ffd700', 13);
         }
       }
     }
@@ -2804,9 +2379,13 @@
         if (tb.isDestroyed) continue;
         if (currentGameInstance.checkAABB(slashHitbox, tb)) {
           tb.isDestroyed = true;
+          currentGameInstance.score = (currentGameInstance.score || 0) + 150;
+          currentGameInstance.runScore = (currentGameInstance.runScore || 0) + 150;
+          currentGameInstance.addFloatingText(tb.x, tb.y - 16, '+150', '#00f0ff', 14);
           currentGameInstance.addExplosion(tb.x, tb.y, '#00f0ff', 30);
           sound.playEnemyDefeat();
           currentGameInstance.screenShake = 6;
+          if (currentGameInstance.updateHUD) currentGameInstance.updateHUD();
         }
       }
     }
@@ -2877,11 +2456,11 @@
 
   /**
    * 22. nextLevel()
-   * Advances to the next level (1 to 10)
+   * Advances to the next level (1 to 20)
    */
   function nextLevel() {
     if (!currentGameInstance) return;
-    const nextId = Math.min(10, currentGameInstance.currentLevelId + 1);
+    const nextId = Math.min(20, currentGameInstance.currentLevelId + 1);
     currentGameInstance.startLevel(nextId);
   }
 
@@ -2906,65 +2485,83 @@
    * Updates HUD on-screen gesture indicator, gesture guide, and camera preview footer for TWO HANDS
    */
   function updateTwoHandUIFeedback(rightVec = null) {
-    // 1. TOP HUD (DUAL HAND STATUS)
-    const isLeftAtk = leftConfirmedGesture === 'ATTACK';
-    if (hudLeftEmoji) hudLeftEmoji.textContent = isLeftAtk ? '✊' : '✋';
-    if (hudLeftName) hudLeftName.textContent = isLeftAtk ? 'ATTACK' : (leftHandDetected ? 'READY' : 'NONE');
+    const leftVec = getGestureVector(leftConfirmedGesture);
+    const rightVecDir = getGestureVector(rightConfirmedGesture);
+    const combX = leftVec.x + rightVecDir.x;
+    const combY = leftVec.y + rightVecDir.y;
+    const isAtk = leftVec.atk || rightVecDir.atk;
 
-    if (hudRightEmoji) hudRightEmoji.textContent = gestureEmojiMap[rightConfirmedGesture] || '✋';
-    if (hudRightName) hudRightName.textContent = rightConfirmedGesture;
+    // 1. TOP HUD (DUAL HAND STATUS)
+    const leftEmoji = gestureEmojiMap[leftConfirmedGesture] || (leftVec.atk ? '✊' : '✋');
+    if (hudLeftEmoji) hudLeftEmoji.textContent = leftEmoji;
+    if (hudLeftName) hudLeftName.textContent = leftConfirmedGesture !== 'NONE' ? leftConfirmedGesture : (leftHandDetected ? 'READY' : 'NONE');
+
+    const rightEmoji = gestureEmojiMap[rightConfirmedGesture] || (rightVecDir.atk ? '✊' : '✋');
+    if (hudRightEmoji) hudRightEmoji.textContent = rightEmoji;
+    if (hudRightName) hudRightName.textContent = rightConfirmedGesture !== 'NONE' ? rightConfirmedGesture : (rightHandDetected ? 'READY' : 'NONE');
 
     if (hudConfidencePill) hudConfidencePill.textContent = `HANDS: ${detectedHandsCount}/2`;
 
     // Single-hand observer compatibility
-    if (hudGestureEmoji) hudGestureEmoji.textContent = gestureEmojiMap[rightConfirmedGesture] || (isLeftAtk ? '✊' : '✋');
-    if (hudGestureName) hudGestureName.textContent = rightConfirmedGesture !== 'NONE' ? rightConfirmedGesture : (isLeftAtk ? 'ATTACK' : 'NONE');
+    if (hudGestureEmoji) hudGestureEmoji.textContent = rightEmoji || leftEmoji;
+    if (hudGestureName) hudGestureName.textContent = rightConfirmedGesture !== 'NONE' ? rightConfirmedGesture : (leftConfirmedGesture !== 'NONE' ? leftConfirmedGesture : 'NONE');
 
-    // 2. GESTURE GUIDE PANEL (TWO-HAND CONTROL, STOP POINT REMOVED)
+    // 2. GESTURE GUIDE PANEL (TWO-HAND & DUAL-SIGN CONTROL)
     const guideUp = document.getElementById('guide-cell-up');
     const guideLeft = document.getElementById('guide-cell-left');
     const guideRight = document.getElementById('guide-cell-right');
     const guideDown = document.getElementById('guide-cell-down');
+    const guideUpLeft = document.getElementById('guide-cell-upleft');
+    const guideUpRight = document.getElementById('guide-cell-upright');
     const guideAttack = document.getElementById('guide-cell-attack');
+    const guideNeutral = document.getElementById('guide-cell-neutral');
     const guideNone = document.getElementById('guide-cell-none');
 
-    const isUp = rightConfirmedGesture === 'UP' || leftConfirmedGesture === 'UP';
-    const isLeft = rightConfirmedGesture === 'LEFT';
-    const isRight = rightConfirmedGesture === 'RIGHT';
-    const isDown = rightConfirmedGesture === 'DOWN';
+    const isUp = (combY < 0);
+    const isDown = (combY > 0);
+    const isLeft = (combX < 0);
+    const isRight = (combX > 0);
+    const isUpLeft = (isUp && isLeft) || leftConfirmedGesture === 'UP_LEFT' || rightConfirmedGesture === 'UP_LEFT';
+    const isUpRight = (isUp && isRight) || leftConfirmedGesture === 'UP_RIGHT' || rightConfirmedGesture === 'UP_RIGHT';
 
     if (guideUp) guideUp.classList.toggle('active', isUp);
     if (guideLeft) guideLeft.classList.toggle('active', isLeft);
     if (guideRight) guideRight.classList.toggle('active', isRight);
     if (guideDown) guideDown.classList.toggle('active', isDown);
-    if (guideAttack) guideAttack.classList.toggle('active', isLeftAtk);
-    if (guideNone) guideNone.classList.remove('active'); // Stop point removed / kept inactive
+    if (guideUpLeft) guideUpLeft.classList.toggle('active', isUpLeft);
+    if (guideUpRight) guideUpRight.classList.toggle('active', isUpRight);
+    if (guideAttack) guideAttack.classList.toggle('active', isAtk);
+    if (guideNeutral) guideNeutral.classList.toggle('active', combX === 0 && combY === 0 && !isAtk && detectedHandsCount > 0);
+    if (guideNone) guideNone.classList.remove('active');
 
     // 3. CAMERA PREVIEW FOOTER & BADGES
     if (camFeedbackLeft) {
-      const lEmoji = isLeftAtk ? '✊' : '✋';
-      const lName = isLeftAtk ? 'ATTACK' : (leftHandDetected ? 'READY' : 'NONE');
-      camFeedbackLeft.textContent = `L (ATK): ${lEmoji} ${lName}`;
+      camFeedbackLeft.textContent = `L: ${leftEmoji} ${leftConfirmedGesture !== 'NONE' ? leftConfirmedGesture : (leftHandDetected ? 'READY' : 'NONE')}`;
     }
     if (camFeedbackRight) {
-      const rEmoji = gestureEmojiMap[rightConfirmedGesture] || '✋';
-      camFeedbackRight.textContent = `R (MOVE): ${rEmoji} ${rightConfirmedGesture}`;
+      camFeedbackRight.textContent = `R: ${rightEmoji} ${rightConfirmedGesture !== 'NONE' ? rightConfirmedGesture : (rightHandDetected ? 'READY' : 'NONE')}`;
     }
 
     if (camFeedbackStatus) {
       if (detectedHandsCount === 2) {
-        camFeedbackStatus.textContent = 'STATUS: 2 HANDS ACTIVE (MOVE & ATTACK)';
+        if (combX !== 0 && combY !== 0) {
+          camFeedbackStatus.textContent = `STATUS: DUAL-SIGN (${combY < 0 ? 'UP' : 'DOWN'}+${combX > 0 ? 'RIGHT' : 'LEFT'})`;
+        } else if (isAtk && (combX !== 0 || combY !== 0)) {
+          camFeedbackStatus.textContent = 'STATUS: MOVE + ATTACK';
+        } else {
+          camFeedbackStatus.textContent = 'STATUS: 2 HANDS ACTIVE';
+        }
       } else if (detectedHandsCount === 1) {
-        const gName = isLeftAtk ? '✊ ATTACK' : (rightConfirmedGesture !== 'NONE' ? `${gestureEmojiMap[rightConfirmedGesture] || ''} ${rightConfirmedGesture}` : '✋ READY');
-        camFeedbackStatus.textContent = `STATUS: 1 HAND ACTIVE (${gName})`;
+        const activeName = rightHandDetected ? rightConfirmedGesture : leftConfirmedGesture;
+        camFeedbackStatus.textContent = `STATUS: 1 HAND (${activeName})`;
       } else {
-        camFeedbackStatus.textContent = isCameraActive ? 'STATUS: SEARCHING FOR HANDS' : 'STATUS: CAMERA OFF';
+        camFeedbackStatus.textContent = isCameraActive ? 'STATUS: SEARCHING' : 'STATUS: CAMERA OFF';
       }
     }
 
     if (camTrackingBadge) {
       if (detectedHandsCount > 0) {
-        camTrackingBadge.textContent = detectedHandsCount === 2 ? '2 HANDS ACTIVE' : '1 HAND ACTIVE';
+        camTrackingBadge.textContent = `${detectedHandsCount} HAND${detectedHandsCount > 1 ? 'S' : ''}`;
         camTrackingBadge.className = 'cam-badge badge-active';
       } else {
         camTrackingBadge.textContent = isCameraActive ? 'SEARCHING' : 'OFF';
@@ -2975,10 +2572,10 @@
     // 4. RETICLES ON CAMERA PREVIEW
     const isMirror = gameStateData.settings.mirrorCamera !== false;
     if (camHandReticleLeft) {
-      if (leftHandDetected && (previousLeftSmoothedLandmarks || cvLeftPos)) {
+      if (leftHandDetected && previousLeftSmoothedLandmarks) {
         camHandReticleLeft.classList.remove('hidden');
-        const pX = previousLeftSmoothedLandmarks ? previousLeftSmoothedLandmarks[9].x : (cvLeftPos ? cvLeftPos.x : 0.25);
-        const pY = previousLeftSmoothedLandmarks ? previousLeftSmoothedLandmarks[9].y : (cvLeftPos ? cvLeftPos.y : 0.5);
+        const pX = previousLeftSmoothedLandmarks[9].x;
+        const pY = previousLeftSmoothedLandmarks[9].y;
         camHandReticleLeft.style.left = `${(isMirror ? (1 - pX) : pX) * 100}%`;
         camHandReticleLeft.style.top = `${pY * 100}%`;
         camHandReticleLeft.textContent = isLeftAtk ? '✊' : '✋';
@@ -2988,10 +2585,10 @@
     }
 
     if (camHandReticleRight) {
-      if (rightHandDetected && (previousRightSmoothedLandmarks || cvRightPos)) {
+      if (rightHandDetected && previousRightSmoothedLandmarks) {
         camHandReticleRight.classList.remove('hidden');
-        const pX = previousRightSmoothedLandmarks ? previousRightSmoothedLandmarks[9].x : (cvRightPos ? cvRightPos.x : 0.75);
-        const pY = previousRightSmoothedLandmarks ? previousRightSmoothedLandmarks[9].y : (cvRightPos ? cvRightPos.y : 0.5);
+        const pX = previousRightSmoothedLandmarks[9].x;
+        const pY = previousRightSmoothedLandmarks[9].y;
         camHandReticleRight.style.left = `${(isMirror ? (1 - pX) : pX) * 100}%`;
         camHandReticleRight.style.top = `${pY * 100}%`;
         camHandReticleRight.textContent = gestureEmojiMap[rightConfirmedGesture] || '✋';
@@ -3008,7 +2605,6 @@
     const isMirror = gameStateData.settings.mirrorCamera !== false;
 
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-      classifyTwoHands([], [], isMirror);
       detectedHandsCount = 0;
       leftHandDetected = false;
       rightHandDetected = false;
@@ -3018,6 +2614,7 @@
       previousLeftSmoothedLandmarks = null;
       previousRightSmoothedLandmarks = null;
       previousSmoothedLandmarks = null;
+
       if (overlayCtx && overlayCanvas) {
         overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
       }
@@ -3026,27 +2623,14 @@
       return;
     }
 
-    const { leftHand, rightHand } = classifyTwoHands(results.multiHandLandmarks, results.multiHandedness, isMirror);
+    detectedHandsCount = results.multiHandLandmarks.length;
+    handDetected = true;
 
-    detectedHandsCount = Math.min(2, (leftHand ? 1 : 0) + (rightHand ? 1 : 0));
-    handDetected = detectedHandsCount > 0;
-
-    if (detectedHandsCount === 0) {
-      leftHandDetected = false;
-      rightHandDetected = false;
-      handDetected = false;
-      leftDetectedGesture = 'NONE';
-      rightDetectedGesture = 'NONE';
-      previousLeftSmoothedLandmarks = null;
-      previousRightSmoothedLandmarks = null;
-      previousSmoothedLandmarks = null;
-      if (overlayCtx && overlayCanvas) {
-        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-      }
-      handleTwoHandGestures('NONE', 'NONE');
-      updateTwoHandUIFeedback();
-      return;
-    }
+    const { leftHand, rightHand } = classifyTwoHands(
+      results.multiHandLandmarks,
+      results.multiHandedness,
+      isMirror
+    );
 
     // --- PROCESS LEFT HAND (ATTACK ONLY) ---
     let rawLeft = 'NONE';
@@ -3085,27 +2669,12 @@
       rightConfidence = 0;
     }
 
-    // Single Hand Multi-Action Capability:
-    // If only 1 hand is present in camera, let it do BOTH Attack (fist) and Movement/Jump (pointing)!
-    if (detectedHandsCount === 1) {
-      const activeHand = smoothedRight || smoothedLeft;
-      if (activeHand && isFist(activeHand)) {
-        rawLeft = 'ATTACK';
-        rawRight = 'NONE';
-      } else if (activeHand) {
-        rawLeft = 'NONE';
-        rawRight = detectRightHandMovement(activeHand);
-      }
-    }
-
     // Backward-compatibility aliases
     previousSmoothedLandmarks = smoothedRight || smoothedLeft;
     currentDetectedGesture = rawRight !== 'NONE' ? rawRight : rawLeft;
 
     // --- DRAW BOTH HANDS ON CAMERA OVERLAY ---
-    if (gameStateData.settings.cameraPreview) {
-      drawTwoHandsOnOverlay(smoothedLeft, rawLeft, smoothedRight, rawRight, rightVec);
-    }
+    drawTwoHandsOnOverlay(smoothedLeft, rawLeft, smoothedRight, rawRight, rightVec);
 
     // --- APPLY SIMULTANEOUS GESTURES TO PLAYER ---
     handleTwoHandGestures(rawLeft, rawRight);
@@ -3194,33 +2763,25 @@
       overlayCtx.restore();
     }
 
-    if (smoothedLeft && smoothedRight) {
+    if (smoothedLeft) {
       const isAtk = leftGesture === 'ATTACK';
       const leftName = isAtk ? '✊ ATTACK' : '✋ READY';
       renderHand(
         smoothedLeft,
         isAtk ? '#ff007f' : '#ffaa00',
         isAtk ? 'rgba(255, 0, 127, 0.8)' : 'rgba(255, 170, 0, 0.7)',
-        `LEFT: ${leftName}`,
+        `LEFT HAND: ${leftName}`,
         false
       );
+    }
+
+    if (smoothedRight) {
       const rightName = rightGesture === 'NONE' ? 'NEUTRAL' : rightGesture;
       renderHand(
         smoothedRight,
         '#00f0ff',
         'rgba(0, 240, 255, 0.75)',
-        `RIGHT: ${rightName}`,
-        true
-      );
-    } else if (smoothedLeft || smoothedRight) {
-      const singleHand = smoothedRight || smoothedLeft;
-      const isAtk = leftGesture === 'ATTACK';
-      const activeGestureName = isAtk ? '✊ ATTACK' : (rightGesture !== 'NONE' ? rightGesture : '✋ READY');
-      renderHand(
-        singleHand,
-        isAtk ? '#ff007f' : '#00f0ff',
-        isAtk ? 'rgba(255, 0, 127, 0.8)' : 'rgba(0, 240, 255, 0.75)',
-        `HAND: ${activeGestureName}`,
+        `RIGHT HAND: ${rightName}`,
         true
       );
     }
@@ -3230,12 +2791,9 @@
     drawTwoHandsOnOverlay(isFistGesture ? landmarks : null, isFistGesture ? 'ATTACK' : 'READY', !isFistGesture ? landmarks : null, !isFistGesture ? 'RIGHT' : 'NONE', null);
   }
 
-  let cvLeftPos = null;
-  let cvRightPos = null;
-
   /**
-   * Native Computer Vision Engine (Zero AI / <1MB RAM)
-   * Guaranteed 60 FPS on any laptop (2GB - 4GB RAM compatible)
+   * Native Computer Vision fallback if CDN is offline
+   * Separates left screen half (Attack) and right screen half (Movement)
    */
   function processNativeCVFrame() {
     if (!videoEl || videoEl.videoWidth === 0) return;
@@ -3250,30 +2808,15 @@
     let rightCount = 0, rightSumX = 0, rightSumY = 0;
     const midX = w / 2;
 
-    // EXCLUDE HEAD, NECK, AND SEATED TORSO / CHEST:
-    // A seated player's body and clothes occupy the center: px from 22% to 78%, and py below 25%.
-    // Only hands raised to the sides (outer 25% margins) or raised high can be valid hand gestures!
     for (let i = 0; i < data.length; i += 4) {
-      const px = (i / 4) % w;
-      const py = Math.floor((i / 4) / w);
-
-      // Exclude center torso, shirt, shoulders, and chest
-      if (px > w * 0.22 && px < w * 0.78 && py > h * 0.22) {
-        continue;
-      }
-      // Exclude head and face
-      if (py < h * 0.40 && px > w * 0.28 && px < w * 0.72) {
-        continue;
-      }
-
       const r = data[i], g = data[i + 1], b = data[i + 2];
-      // STRICT HUMAN SKIN: Rejects yellow walls (where green is very high) and maroon shirts
-      const isSkin = (r > 90 && g > 42 && b > 25 &&
-                      r > g && g > b &&
-                      (r - g) >= 18 && (r - b) >= 28 &&
-                      Math.abs(r - g) > 12);
+      const isSkin = (r > 95 && g > 40 && b > 20 &&
+                      (Math.max(r, g, b) - Math.min(r, g, b) > 15) &&
+                      Math.abs(r - g) > 15 && r > g && r > b);
 
       if (isSkin) {
+        const px = (i / 4) % w;
+        const py = Math.floor((i / 4) / w);
         if (px < midX) {
           leftCount++; leftSumX += px; leftSumY += py;
         } else {
@@ -3286,145 +2829,102 @@
     let rawLeft = 'NONE';
     let rawRight = 'NONE';
 
-    // Must have at least 250 genuine skin pixels to qualify as a raised hand
-    const MIN_HAND_PIXELS = 250;
-
-    // Left half: Attack / Secondary Hand
-    if (leftCount > MIN_HAND_PIXELS) {
+    // In mirrored mode: left half of camera canvas is Left Hand
+    if (leftCount > 180) {
       leftHandDetected = true;
-      cvLeftPos = { x: (leftSumX / leftCount) / w, y: (leftSumY / leftCount) / h };
-      rawLeft = (leftCount > 450) ? 'ATTACK' : 'READY';
+      if (leftCount > 420) {
+        rawLeft = 'ATTACK';
+      } else {
+        const lcx = (leftSumX / leftCount) / midX;
+        const lcy = (leftSumY / leftCount) / h;
+        const ldx = lcx - 0.5;
+        const ldy = lcy - 0.5;
+        const adx = Math.abs(ldx), ady = Math.abs(ldy);
+        if (adx > 0.08 && ady > 0.08) {
+          if (ldx > 0 && ldy < 0) rawLeft = isMirror ? 'UP_LEFT' : 'UP_RIGHT';
+          else if (ldx < 0 && ldy < 0) rawLeft = isMirror ? 'UP_RIGHT' : 'UP_LEFT';
+          else if (ldx > 0 && ldy > 0) rawLeft = isMirror ? 'DOWN_LEFT' : 'DOWN_RIGHT';
+          else if (ldx < 0 && ldy > 0) rawLeft = isMirror ? 'DOWN_RIGHT' : 'DOWN_LEFT';
+        } else if (adx > ady * 1.15 && adx > 0.10) {
+          rawLeft = ldx < 0 ? (isMirror ? 'RIGHT' : 'LEFT') : (isMirror ? 'LEFT' : 'RIGHT');
+        } else if (ady > adx * 1.15 && ady > 0.10) {
+          rawLeft = ldy < 0 ? 'UP' : 'DOWN';
+        } else {
+          rawLeft = 'READY';
+        }
+      }
     } else {
       leftHandDetected = false;
-      cvLeftPos = null;
     }
 
-    // Right half: Movement
-    if (rightCount > MIN_HAND_PIXELS) {
+    // Right half of camera canvas is Right Hand (Movement)
+    if (rightCount > 180) {
       rightHandDetected = true;
-      cvRightPos = { x: (rightSumX / rightCount) / w, y: (rightSumY / rightCount) / h };
-      const cx = ((rightSumX / rightCount) - midX) / midX;
-      const cy = (rightSumY / rightCount) / h;
-      const dx = cx - 0.5;
-      const dy = cy - 0.5;
-      if (Math.abs(dx) > Math.abs(dy) * 1.35 && Math.abs(dx) > 0.12) {
-        rawRight = dx < 0 ? (isMirror ? 'RIGHT' : 'LEFT') : (isMirror ? 'LEFT' : 'RIGHT');
-      } else if (Math.abs(dy) > Math.abs(dx) * 1.35 && Math.abs(dy) > 0.12) {
-        rawRight = dy < 0 ? 'UP' : 'DOWN';
+      if (rightCount > 420) {
+        rawRight = 'ATTACK';
+      } else {
+        const cx = ((rightSumX / rightCount) - midX) / midX;
+        const cy = (rightSumY / rightCount) / h;
+        const dx = cx - 0.5;
+        const dy = cy - 0.5;
+        const adx = Math.abs(dx), ady = Math.abs(dy);
+        if (adx > 0.08 && ady > 0.08) {
+          if (dx > 0 && dy < 0) rawRight = isMirror ? 'UP_LEFT' : 'UP_RIGHT';
+          else if (dx < 0 && dy < 0) rawRight = isMirror ? 'UP_RIGHT' : 'UP_LEFT';
+          else if (dx > 0 && dy > 0) rawRight = isMirror ? 'DOWN_LEFT' : 'DOWN_RIGHT';
+          else if (dx < 0 && dy > 0) rawRight = isMirror ? 'DOWN_RIGHT' : 'DOWN_LEFT';
+        } else if (adx > ady * 1.15 && adx > 0.10) {
+          rawRight = dx < 0 ? (isMirror ? 'RIGHT' : 'LEFT') : (isMirror ? 'LEFT' : 'RIGHT');
+        } else if (ady > adx * 1.15 && ady > 0.10) {
+          rawRight = dy < 0 ? 'UP' : 'DOWN';
+        } else {
+          rawRight = 'READY';
+        }
       }
     } else {
       rightHandDetected = false;
-      cvRightPos = null;
-    }
-
-    // Single-Hand Mode: Only if one distinct hand is actually raised
-    const isSingleHandMode = Number(gameStateData.settings && gameStateData.settings.trackingHands) === 1;
-    if (isSingleHandMode) {
-      if (rightHandDetected && !leftHandDetected) {
-        if (rightCount > 480) {
-          rawLeft = 'ATTACK';
-          rawRight = 'NONE';
-        }
-      } else if (leftHandDetected && !rightHandDetected) {
-        if (leftCount > 480) {
-          rawLeft = 'ATTACK';
-          rawRight = 'NONE';
-        } else {
-          const cx = (leftSumX / leftCount) / midX;
-          const cy = (leftSumY / leftCount) / h;
-          const dx = cx - 0.5;
-          const dy = cy - 0.5;
-          if (Math.abs(dx) > Math.abs(dy) * 1.35 && Math.abs(dx) > 0.12) {
-            rawRight = dx < 0 ? (isMirror ? 'RIGHT' : 'LEFT') : (isMirror ? 'LEFT' : 'RIGHT');
-          } else if (Math.abs(dy) > Math.abs(dx) * 1.35 && Math.abs(dy) > 0.12) {
-            rawRight = dy < 0 ? 'UP' : 'DOWN';
-          }
-        }
-      }
     }
 
     detectedHandsCount = (leftHandDetected ? 1 : 0) + (rightHandDetected ? 1 : 0);
     handDetected = detectedHandsCount > 0;
-
-    // Live overlay visual feedback on Camera Preview for Direct CV
-    if (overlayCtx && overlayCanvas && gameStateData.settings.cameraPreview) {
-      const ow = overlayCanvas.width;
-      const oh = overlayCanvas.height;
-      overlayCtx.clearRect(0, 0, ow, oh);
-
-      // Center Divider Line
-      overlayCtx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
-      overlayCtx.lineWidth = 1;
-      overlayCtx.setLineDash([4, 4]);
-      overlayCtx.beginPath();
-      overlayCtx.moveTo(ow / 2, 0);
-      overlayCtx.lineTo(ow / 2, oh);
-      overlayCtx.stroke();
-      overlayCtx.setLineDash([]);
-
-      // Mode Badge
-      overlayCtx.font = 'bold 8px monospace';
-      overlayCtx.fillStyle = '#00f0ff';
-      overlayCtx.fillText('⚡ LOW-RAM CV (60 FPS)', 8, 12);
-
-      // Left Hand Reticle (Attack)
-      if (leftHandDetected && cvLeftPos) {
-        const lx = (isMirror ? (1 - cvLeftPos.x) : cvLeftPos.x) * ow;
-        const ly = cvLeftPos.y * oh;
-        overlayCtx.fillStyle = rawLeft === 'ATTACK' ? 'rgba(255, 0, 127, 0.35)' : 'rgba(255, 170, 0, 0.25)';
-        overlayCtx.strokeStyle = rawLeft === 'ATTACK' ? '#ff007f' : '#ffaa00';
-        overlayCtx.lineWidth = 2;
-        overlayCtx.beginPath();
-        overlayCtx.arc(lx, ly, 18, 0, Math.PI * 2);
-        overlayCtx.fill();
-        overlayCtx.stroke();
-        overlayCtx.fillStyle = '#ffffff';
-        overlayCtx.fillText(rawLeft === 'ATTACK' ? '✊ ATK' : '✋ L', lx - 14, ly - 8);
-      }
-
-      // Right Hand Reticle (Movement)
-      if (rightHandDetected && cvRightPos) {
-        const rx = (isMirror ? (1 - cvRightPos.x) : cvRightPos.x) * ow;
-        const ry = cvRightPos.y * oh;
-        overlayCtx.fillStyle = 'rgba(0, 255, 136, 0.25)';
-        overlayCtx.strokeStyle = '#00ff88';
-        overlayCtx.lineWidth = 2;
-        overlayCtx.beginPath();
-        overlayCtx.arc(rx, ry, 18, 0, Math.PI * 2);
-        overlayCtx.fill();
-        overlayCtx.stroke();
-        overlayCtx.fillStyle = '#ffffff';
-        overlayCtx.fillText(rawRight !== 'NONE' ? rawRight : '✋ R', rx - 12, ry - 8);
-      }
-    }
 
     handleTwoHandGestures(rawLeft, rawRight);
     updateTwoHandUIFeedback();
   }
 
   // =========================================================================
-  // 5. COMPREHENSIVE LEVEL THEME REGISTRY (10 REALMS - 2 PER CHAPTER)
+  // 5. COMPREHENSIVE LEVEL THEME REGISTRY (NATURE, SPACE, SMART CITY, GRAVEYARD, RUINS)
   // =========================================================================
   const THEME_REGISTRY = {
-    // --- 🏙️ CHAPTER 1: DIGITAL NIGHT CITY (Levels 1-2) ---
-    1: { id: 1, type: 'smart_city', name: 'Neon Awakening', shortName: 'Neon City', icon: '🏙️', themeTitle: 'CYBER METROPOLIS', topColor: '#00f0ff', bodyColor: '#0b1324', bodyGrad: ['#131c30', '#0b1220', '#04070e'] },
-    2: { id: 2, type: 'smart_city', name: 'Rooftop Leap', shortName: 'Rooftops', icon: '🌆', themeTitle: 'ROOFTOP SKYLINE', topColor: '#ff007f', bodyColor: '#1a0822', bodyGrad: ['#260c33', '#15051c', '#08020a'] },
+    // --- 🏙️ SMART CITY (Levels 1-4) ---
+    1: { id: 1, type: 'smart_city', name: 'Downtown Spire', shortName: 'Smart City', icon: '🏙️', themeTitle: 'SMART CITY', topColor: '#00f0ff', bodyColor: '#0b1324' },
+    2: { id: 2, type: 'smart_city', name: 'Rooftop Skywalk', shortName: 'Smart City', icon: '🚝', themeTitle: 'SMART CITY', topColor: '#00f0ff', bodyColor: '#0b1324' },
+    3: { id: 3, type: 'smart_city', name: 'Cyber Grid', shortName: 'Smart City', icon: '⚡', themeTitle: 'SMART CITY', topColor: '#00e5ff', bodyColor: '#0a1222' },
+    4: { id: 4, type: 'smart_city', name: 'Nexus Highway', shortName: 'Smart City', icon: '🌆', themeTitle: 'SMART CITY', topColor: '#00f0ff', bodyColor: '#0b1324' },
 
-    // --- 🌲 CHAPTER 2: BIOLUMINESCENT NATURE (Levels 3-4) ---
-    3: { id: 3, type: 'nature', name: 'Spore Caverns', shortName: 'Spore Caves', icon: '🍄', themeTitle: 'SPORE CAVERNS', topColor: '#00ff88', bodyColor: '#07180f', bodyGrad: ['#0a2416', '#06170e', '#020905'] },
-    4: { id: 4, type: 'nature', name: 'Overgrowth Run', shortName: 'Overgrowth', icon: '🌿', themeTitle: 'ANCIENT CANOPY', topColor: '#a3e635', bodyColor: '#0d1c08', bodyGrad: ['#1c3010', '#101d08', '#050c02'] },
+    // --- 🌲 NATURE (Levels 5-8) ---
+    5: { id: 5, type: 'nature', name: 'Spore Caverns', shortName: 'Nature', icon: '🍄', themeTitle: 'NATURE', topColor: '#00ff88', bodyColor: '#07180f' },
+    6: { id: 6, type: 'nature', name: 'Mystic Canopy', shortName: 'Nature', icon: '🌿', themeTitle: 'NATURE', topColor: '#00ff88', bodyColor: '#07180f' },
+    7: { id: 7, type: 'nature', name: 'Twilight Grove', shortName: 'Nature', icon: '🎋', themeTitle: 'NATURE', topColor: '#00e5a3', bodyColor: '#06170e' },
+    8: { id: 8, type: 'nature', name: 'Enchanted Falls', shortName: 'Nature', icon: '🌸', themeTitle: 'NATURE', topColor: '#00ff88', bodyColor: '#07180f' },
 
-    // --- 🌋 CHAPTER 3: UNDERGROUND FACTORY & FOUNDRY (Levels 5-6) ---
-    5: { id: 5, type: 'foundry', name: 'Piston Core', shortName: 'Piston Core', icon: '🌋', themeTitle: 'VOLCANIC FOUNDRY', topColor: '#ff3b30', bodyColor: '#240606', bodyGrad: ['#2e0c0c', '#1a0505', '#0a0202'] },
-    6: { id: 6, type: 'foundry', name: 'Steam Maze', shortName: 'Steam Maze', icon: '⚙️', themeTitle: 'STEAM FACTORY', topColor: '#f59e0b', bodyColor: '#211306', bodyGrad: ['#2e1b09', '#1a0e04', '#0a0501'] },
+    // --- 🪦 GRAVEYARD (Levels 9-12) ---
+    9: { id: 9, type: 'graveyard', name: 'Shadow Cemetery', shortName: 'Graveyard', icon: '🪦', themeTitle: 'GRAVEYARD', topColor: '#b026ff', bodyColor: '#180720' },
+    10: { id: 10, type: 'graveyard', name: 'Haunted Crypt', shortName: 'Graveyard', icon: '🕯️', themeTitle: 'GRAVEYARD', topColor: '#ff0055', bodyColor: '#1a0512' },
+    11: { id: 11, type: 'graveyard', name: 'Blood Moon Ruins', shortName: 'Graveyard', icon: '🩸', themeTitle: 'GRAVEYARD', topColor: '#ff2255', bodyColor: '#1c0514' },
+    12: { id: 12, type: 'graveyard', name: 'Soul Sanctuary', shortName: 'Graveyard', icon: '👻', themeTitle: 'GRAVEYARD', topColor: '#a855f7', bodyColor: '#160822' },
 
-    // --- 🌌 CHAPTER 4: DEEP CYBERSPACE & RETROWAVE (Levels 7-8) ---
-    7: { id: 7, type: 'space', name: 'Data Stream', shortName: 'Data Stream', icon: '💾', themeTitle: 'CYBERSPACE VOID', topColor: '#00ff66', bodyColor: '#031c0a', bodyGrad: ['#05260f', '#021607', '#010a03'] },
-    8: { id: 8, type: 'space', name: 'Glitch Vector', shortName: 'Glitch Core', icon: '👾', themeTitle: 'GLITCH REALM', topColor: '#f43f5e', bodyColor: '#210414', bodyGrad: ['#2b071b', '#170310', '#0a0106'] },
+    // --- 🌌 SPACE (Levels 13-16) ---
+    13: { id: 13, type: 'space', name: 'Cosmic Nebula', shortName: 'Space', icon: '🌌', themeTitle: 'SPACE', topColor: '#00d4ff', bodyColor: '#060a1e' },
+    14: { id: 14, type: 'space', name: 'Planetary Rings', shortName: 'Space', icon: '🪐', themeTitle: 'SPACE', topColor: '#38bdf8', bodyColor: '#060a1e' },
+    15: { id: 15, type: 'space', name: 'Asteroid Field', shortName: 'Space', icon: '☄️', themeTitle: 'SPACE', topColor: '#818cf8', bodyColor: '#08081c' },
+    16: { id: 16, type: 'space', name: 'Event Horizon', shortName: 'Space', icon: '🕳️', themeTitle: 'SPACE', topColor: '#c084fc', bodyColor: '#0a061c' },
 
-    // --- 🏛️ CHAPTER 5: ANCIENT CELESTIAL RUINS & CHRONO CORE (Levels 9-10) ---
-    9: { id: 9, type: 'ruins', name: 'Forgotten Nexus', shortName: 'Starlight Ruins', icon: '🏛️', themeTitle: 'CELESTIAL TEMPLE', topColor: '#818cf8', bodyColor: '#120d29', bodyGrad: ['#191238', '#0e0a24', '#050312'] },
-    10: { id: 10, type: 'nexus', name: 'The Chrono Core', shortName: 'Chrono Core', icon: '👑', themeTitle: 'QUANTUM SINGULARITY', topColor: '#00f0ff', bodyColor: '#0c162e', bodyGrad: ['#122042', '#071026', '#020512'] }
+    // --- 🏛️ CELESTIAL RUINS & SHADOW NEXUS (Levels 17-20) ---
+    17: { id: 17, type: 'ruins', name: 'Cyber Temple', shortName: 'Ancient Ruins', icon: '🏛️', themeTitle: 'ANCIENT RUINS', topColor: '#ffaa00', bodyColor: '#1c1206' },
+    18: { id: 18, type: 'ruins', name: 'Titan Colosseum', shortName: 'Ancient Ruins', icon: '🗿', themeTitle: 'ANCIENT RUINS', topColor: '#f59e0b', bodyColor: '#1c1206' },
+    19: { id: 19, type: 'ruins', name: 'Chrono Tear', shortName: 'Dimensional Rift', icon: '⏳', themeTitle: 'DIMENSIONAL RIFT', topColor: '#fbbf24', bodyColor: '#1e1408' },
+    20: { id: 20, type: 'nexus', name: 'Grand Shadow Nexus', shortName: 'Shadow Nexus', icon: '👑', themeTitle: 'SHADOW NEXUS', topColor: '#00f0ff', bodyColor: '#0a0d1c' }
   };
 
   function getLevelTheme(levelOrId) {
@@ -3456,13 +2956,6 @@
       this.particles = [];
       this.shadowGhosts = [];
       this.ghostTimer = 0;
-      this.floatingPopups = [];
-      this.damageFlashTimer = 0;
-      this.maxLives = 3;
-      this.lives = 3;
-      this.coinsCollected = 0;
-      this.totalLevelCoins = 0;
-      this.activeCheckpoint = null;
 
       this.setupResize();
     }
@@ -3470,49 +2963,71 @@
     setupResize() {
       const resize = () => {
         const container = document.getElementById('game-area-container');
-        const rawW = (container && container.clientWidth) ? container.clientWidth : window.innerWidth;
-        const rawH = (container && container.clientHeight) ? container.clientHeight : window.innerHeight;
-        const scale = (gameStateData.settings && Number(gameStateData.settings.renderScale)) || 
-                      (gameStateData.settings && gameStateData.settings.perfProfile === 'low_ram' ? 0.75 : 1.0);
-        this.canvas.width = Math.max(320, Math.round(rawW * scale));
-        this.canvas.height = Math.max(240, Math.round(rawH * scale));
-        this.canvas.style.width = '100%';
-        this.canvas.style.height = '100%';
+        this.canvas.width = container.clientWidth || window.innerWidth;
+        this.canvas.height = container.clientHeight || window.innerHeight;
       };
       window.addEventListener('resize', resize);
-      this.triggerResize = resize;
       resize();
     }
 
     startLevel(levelId) {
-      const maxUnlocked = gameStateData.unlockedLevel || 1;
-      if (typeof levelId !== 'number' || levelId < 1) levelId = 1;
-      if (levelId > maxUnlocked) {
-        console.warn(`Level ${levelId} is locked. Highest unlocked is ${maxUnlocked}. Redirecting to level ${maxUnlocked}.`);
-        levelId = maxUnlocked;
-      }
       this.currentLevelId = levelId;
       this.currentLevel = getLevelCopy(levelId);
-      gameStateData.lastPlayedLevel = levelId;
-      persistData();
       this.state = 'PLAYING';
-      this.lastTimestamp = performance.now();
       this.hasGameplayStarted = false;
       this.particles = [];
       this.shadowGhosts = [];
       this.ghostTimer = 0;
-      this.floatingPopups = [];
-      this.damageFlashTimer = 0;
-      activeKeys.clear();
-      touchMoveDirection = null;
-
-      // 3 Lives, Coins & Checkpoint System
-      this.lives = 3;
+      this.score = 0;
+      this.runScore = 0;
       this.coinsCollected = 0;
-      this.totalLevelCoins = (this.currentLevel.coins && this.currentLevel.coins.length) || 0;
-      this.activeCheckpoint = null;
+      this.enemiesDefeated = 0;
+      this.lives = 3;
+      this.invulnerableTimer = 0;
 
-      this.updateHUDStats();
+      const currentAttempt = getLevelAttempt(levelId);
+      const best = gameStateData.bestAttempts[levelId];
+
+      // Update HUD with Level Number & Thematic Realm Badge
+      const lvlTheme = getLevelTheme(levelId);
+      const lvlDisp = document.getElementById('hud-level-display');
+      if (lvlDisp) lvlDisp.textContent = `LVL ${String(levelId).padStart(2, '0')} • ${lvlTheme.icon} ${lvlTheme.shortName.toUpperCase()}`;
+      const attDisp = document.getElementById('hud-attempt-display');
+      if (attDisp) attDisp.textContent = `CURRENT ATTEMPT: ${String(currentAttempt).padStart(2, '0')}`;
+      const bestDisp = document.getElementById('hud-best-display');
+      if (bestDisp) bestDisp.textContent = `BEST ATTEMPT: ${best ? best : '--'}`;
+
+      // Reset enemy health, AI state machine, and patrol velocity for this level run
+      if (this.currentLevel && this.currentLevel.enemies) {
+        for (const enemy of this.currentLevel.enemies) {
+          enemy.isAlive = true;
+          enemy.health = enemy.type === 'titan_guard' ? 3 : (enemy.type === 'patrol_drone' ? 2 : 1);
+          enemy.maxHealth = enemy.health;
+          enemy.aiState = 'patrol';
+          enemy.aiTimer = 0;
+          enemy.attackCooldown = 0;
+          enemy.hurtTimer = 0;
+          enemy.travelDist = 0;
+          enemy.vx = enemy.baseVx || (enemy.type === 'patrol_drone' ? 1.8 : (enemy.type === 'titan_guard' ? 0.9 : 1.2));
+        }
+      }
+
+      // Generate rich coin layout around platforms, hazards, and pathways
+      this.coins = (typeof generateCoinsForLevel === 'function') ? generateCoinsForLevel(this.currentLevel) : [];
+      if (!this.coins || this.coins.length === 0) {
+        const routeStart = this.currentLevel.spawn.x + 180;
+        const routeEnd = this.currentLevel.goal ? this.currentLevel.goal.x - 100 : routeStart + 900;
+        const coinCount = Math.max(5, Math.min(12, Math.floor((routeEnd - routeStart) / 230)));
+        this.coins = Array.from({ length: coinCount }, (_, i) => ({
+          x: routeStart + ((routeEnd - routeStart) / Math.max(1, coinCount - 1)) * i,
+          y: this.currentLevel.spawn.y - 70 - (i % 3) * 24, width: 22, height: 22, collected: false, phase: i * 0.8
+        }));
+      }
+
+      // Setup level mission objective
+      const totalEnemies = (this.currentLevel && this.currentLevel.enemies) ? this.currentLevel.enemies.length : 0;
+      const totalCoins = (this.coins || []).length;
+      this.currentMission = (typeof getMissionForLevel === 'function') ? getMissionForLevel(levelId, totalEnemies, totalCoins) : null;
 
       // Spawn Player (Enlarged player size for enhanced visibility)
       this.player = {
@@ -3529,9 +3044,7 @@
         hasReachedGoal: false,
         state: 'idle',
         attackTimer: 0,
-        attackDuration: 0.22,
-        invulnerableTimer: 0,
-        jumpBuffer: 0
+        attackDuration: 0.22
       };
 
       // Initialize Camera with forward visibility offset and vertical centering/following
@@ -3550,6 +3063,7 @@
       });
 
       this.switchScreen(null); // Show gameplay
+      this.updateHUD(); // Sync 3-life display, missions, and score immediately
     }
 
     switchScreen(screenId) {
@@ -3578,7 +3092,6 @@
       const attackZone = document.getElementById('attack-zone-container');
       const touchDpad = document.getElementById('touch-controls-fallback');
       const guidePanel = document.getElementById('gesture-guide-panel');
-      const kbHint = document.getElementById('keyboard-controls-hint');
 
       if (screenId === null) {
         // In Gameplay
@@ -3587,15 +3100,99 @@
         if (guidePanel) guidePanel.classList.remove('hidden');
         if (attackZone) attackZone.classList.toggle('hidden', !gameStateData.settings.attackZoneEnabled);
         if (touchDpad) touchDpad.classList.toggle('hidden', gameStateData.settings.controlMode !== 'touch');
-        if (kbHint) kbHint.classList.remove('hidden');
       } else {
         if (hud) hud.classList.add('hidden');
         if (camPanel) camPanel.classList.add('hidden');
         if (guidePanel) guidePanel.classList.add('hidden');
         if (attackZone) attackZone.classList.add('hidden');
         if (touchDpad) touchDpad.classList.add('hidden');
-        if (kbHint) kbHint.classList.add('hidden');
       }
+    }
+
+    updateHUD() {
+      // 1. Update 3-Life hearts
+      const currentLives = Math.max(0, Math.min(3, this.lives ?? 3));
+      for (let i = 1; i <= 3; i++) {
+        const heartEl = document.getElementById(`hud-heart-${i}`);
+        if (heartEl) {
+          if (i <= currentLives) {
+            heartEl.classList.add('active');
+            heartEl.classList.remove('lost');
+            heartEl.textContent = '❤️';
+          } else {
+            heartEl.classList.remove('active');
+            heartEl.classList.add('lost');
+            heartEl.textContent = '🖤';
+          }
+        }
+      }
+      const livesCountEl = document.getElementById('hud-lives-display');
+      if (livesCountEl) {
+        livesCountEl.textContent = `${currentLives} / 3 LIVES`;
+      }
+
+      // 2. Update Score, Coins, and Enemies
+      const scoreValEl = document.getElementById('hud-score-val');
+      if (scoreValEl) scoreValEl.textContent = (this.score || this.runScore || 0).toLocaleString();
+
+      const coinsValEl = document.getElementById('hud-coins-val');
+      if (coinsValEl) coinsValEl.textContent = this.coinsCollected || 0;
+
+      const enemiesValEl = document.getElementById('hud-enemies-val');
+      if (enemiesValEl) enemiesValEl.textContent = this.enemiesDefeated || 0;
+
+      // 3. Update Mission Tracker
+      this.updateMissionHUD();
+    }
+
+    updateMissionHUD() {
+      if (!this.currentMission) return;
+      const missionTitleEl = document.getElementById('hud-mission-title');
+      const missionDescEl = document.getElementById('hud-mission-desc');
+      const missionStatusEl = document.getElementById('hud-mission-status');
+      const missionProgressEl = document.getElementById('hud-mission-progress');
+
+      if (missionTitleEl) missionTitleEl.textContent = this.currentMission.title;
+      if (missionDescEl) missionDescEl.textContent = this.currentMission.desc;
+
+      const pct = Math.min(100, Math.round((this.currentMission.current / Math.max(1, this.currentMission.target)) * 100));
+      if (missionProgressEl) {
+        missionProgressEl.style.width = `${pct}%`;
+      }
+
+      if (missionStatusEl) {
+        if (this.currentMission.completed) {
+          missionStatusEl.textContent = 'COMPLETED';
+          missionStatusEl.className = 'mission-status-pill completed';
+        } else {
+          missionStatusEl.textContent = `${this.currentMission.current}/${this.currentMission.target}`;
+          missionStatusEl.className = 'mission-status-pill active';
+        }
+      }
+    }
+
+    checkMissionProgress(type, amount = 1) {
+      if (!this.currentMission || this.currentMission.completed) return;
+      if (this.currentMission.type === type) {
+        this.currentMission.current = Math.min(this.currentMission.target, this.currentMission.current + amount);
+        if (this.currentMission.current >= this.currentMission.target) {
+          this.completeCurrentMission();
+        } else {
+          this.updateMissionHUD();
+        }
+      }
+    }
+
+    completeCurrentMission() {
+      if (!this.currentMission || this.currentMission.completed) return;
+      this.currentMission.completed = true;
+      this.currentMission.current = this.currentMission.target;
+      this.score = (this.score || 0) + 500;
+      this.runScore = (this.runScore || 0) + 500;
+      this.addFloatingText(this.player ? this.player.x : 200, this.player ? this.player.y - 35 : 100, 'MISSION COMPLETE! +500 PTS', '#00ff88', 18);
+      if (sound.playMissionComplete) sound.playMissionComplete();
+      else sound.playVictory();
+      this.updateHUD();
     }
 
     executePlayerAttack(attackType = 'standard') {
@@ -3655,107 +3252,119 @@
       }
     }
 
-    updateHUDStats() {
-      const lvlTheme = getLevelTheme(this.currentLevelId);
-      const lvlEl = document.getElementById('hud-level-display');
-      if (lvlEl) {
-        lvlEl.textContent = `LVL ${String(this.currentLevelId).padStart(2, '0')} • ${lvlTheme.icon} ${lvlTheme.shortName.toUpperCase()}`;
+    applyPlayerDamage(amount = 1, source = 'hazard') {
+      if (this.state !== 'PLAYING' || !this.player || !this.player.isAlive) return;
+      if (this.invulnerableTimer > 0) return; // Prevent one collision from removing multiple lives
+
+      // Deduct exactly one life
+      this.lives = Math.max(0, (this.lives ?? 3) - amount);
+      this.invulnerableTimer = 1.6; // 1.6 second invulnerability shield
+      this.screenShake = 12;
+
+      // Red damage vignette screen flash
+      const flashOverlay = document.getElementById('damage-flash-overlay');
+      if (flashOverlay) {
+        flashOverlay.classList.add('flash');
+        setTimeout(() => {
+          if (flashOverlay) flashOverlay.classList.remove('flash');
+        }, 450);
       }
 
-      const heartsEl = document.getElementById('hud-hearts-display');
-      if (heartsEl) {
-        let heartsStr = '';
-        for (let i = 0; i < 3; i++) {
-          heartsStr += i < this.lives ? '❤️' : '🖤';
-        }
-        heartsEl.textContent = heartsStr;
+      // Physics recoil when struck by enemy
+      if (source === 'enemy') {
+        this.player.vy = -5.2;
+        this.player.vx = -this.player.facing * 4.6;
       }
 
-      const coinsEl = document.getElementById('hud-coins-display-val') || document.getElementById('hud-coins-val');
-      if (coinsEl) {
-        coinsEl.textContent = `🪙 ${String(this.coinsCollected).padStart(2, '0')} / ${String(this.totalLevelCoins).padStart(2, '0')}`;
-      }
+      // Visual and auditory feedback
+      this.addFloatingText(this.player.x, this.player.y - 20, '-1 LIFE', '#ff2255', 18);
+      this.addExplosion(this.player.x, this.player.y, '#ff0055', 22);
 
-      const cpEl = document.getElementById('hud-checkpoint-display-val');
-      if (cpEl) {
-        if (this.activeCheckpoint) {
-          cpEl.textContent = '🚩 SAVED';
-          cpEl.classList.add('active');
-        } else {
-          cpEl.textContent = '🚩 START';
-          cpEl.classList.remove('active');
-        }
-      }
-    }
+      if (sound.playPlayerHit) sound.playPlayerHit();
+      else sound.playPlayerDefeat();
 
-    takeDamage(reason = 'hazard') {
-      if (this.state !== 'PLAYING') return;
-      if (!this.player || !this.player.isAlive) return;
+      // Update HUD immediately
+      this.updateHUD();
 
-      this.lives = Math.max(0, this.lives - 1);
-      this.updateHUDStats();
-
-      if (this.lives > 0) {
-        sound.playPlayerHurt();
-        this.screenShake = 14;
-        this.damageFlashTimer = 0.35;
-        this.addExplosion(this.player.x, this.player.y, '#ff3344', 30);
-        this.addFloatingPopup(this.player.x, this.player.y - 25, '-1 LIFE', '#ff3344');
-
-        // Respawn player at active checkpoint if reached, else level spawn! (Coins & remaining lives preserved)
-        const respawnPos = this.activeCheckpoint ? this.activeCheckpoint : this.currentLevel.spawn;
-        this.player.x = respawnPos.x;
-        this.player.y = respawnPos.y;
-        this.player.vx = 0;
-        this.player.vy = 0;
-        this.player.isGrounded = false;
-        this.player.invulnerableTimer = 2.0;
-        this.player.state = 'idle';
-
-        // Camera recenter towards respawn position
-        const leadOffset = this.canvas.width * 0.40;
-        const maxCamX = Math.max(0, this.currentLevel.width - this.canvas.width);
-        this.cameraX = Math.max(0, Math.min(maxCamX, this.player.x - leadOffset));
-        const worldH = this.currentLevel.height || 540;
-        this.cameraY = worldH > this.canvas.height
-          ? Math.max(0, Math.min(worldH - this.canvas.height, this.player.y - this.canvas.height * 0.55))
-          : -(this.canvas.height - worldH) / 2;
-
-        if (this.activeCheckpoint) {
-          this.addFloatingPopup(this.player.x, this.player.y - 45, 'RESPAWNED AT CHECKPOINT', '#00f0ff');
-        }
-      } else {
-        this.failLevel(reason);
+      // Trigger Game Over if lives depleted to zero
+      if (this.lives <= 0) {
+        this.triggerGameOver(source);
       }
     }
 
-    failLevel(reason = 'obstacle') {
+    triggerGameOver(reason = 'defeat') {
       if (this.state !== 'PLAYING') return;
       this.state = 'FAILED';
+      if (this.player) this.player.isAlive = false;
       sound.stopBGM();
-      sound.playPlayerDefeat();
-      this.addExplosion(this.player.x, this.player.y, '#ff3344', 45);
+      if (sound.playGameOver) sound.playGameOver();
+      else sound.playPlayerDefeat();
 
-      // Save any coins collected in this attempt to gameStateData and sync leaderboard!
-      if (!gameStateData.levelCoins) gameStateData.levelCoins = {};
-      const prevBest = gameStateData.levelCoins[this.currentLevelId] || 0;
-      if (this.coinsCollected > prevBest) {
-        gameStateData.levelCoins[this.currentLevelId] = this.coinsCollected;
-        let sumCoins = 0;
-        for (const id in gameStateData.levelCoins) sumCoins += gameStateData.levelCoins[id];
-        gameStateData.totalCoins = sumCoins;
-        persistData();
-        syncCurrentPlayerToLeaderboard();
+      if (this.player) {
+        this.addExplosion(this.player.x, this.player.y, '#ff0055', 40);
       }
 
-      const defeatAttemptTag = document.getElementById('defeat-attempt-display');
-      if (defeatAttemptTag) defeatAttemptTag.textContent = 'OUT OF LIVES';
-      const defeatLivesEl = document.getElementById('defeat-lives-display');
-      if (defeatLivesEl) defeatLivesEl.textContent = '🖤🖤🖤 (0/3)';
+      const totalAttempts = incrementLevelAttempt(this.currentLevelId);
+
+      // Populate polished Game Over screen elements
+      const attemptEl = document.getElementById('defeat-attempt-display');
+      if (attemptEl) attemptEl.textContent = `SYSTEM FAILURE • ATTEMPT ${String(totalAttempts - 1).padStart(2, '0')}`;
+
+      const totalAttEl = document.getElementById('defeat-total-attempts');
+      if (totalAttEl) totalAttEl.textContent = totalAttempts - 1;
+
+      const reasonBadge = document.getElementById('defeat-reason-badge');
+      if (reasonBadge) {
+        reasonBadge.textContent = reason === 'pit'
+          ? 'CRITICAL FALL: MATRIX VOID'
+          : (reason === 'enemy' ? 'TERMINATED BY HOSTILE ENFORCER' : 'CORE SHIELD DEPLETED: HAZARD CONTACT');
+      }
+
+      const scoreEl = document.getElementById('failed-final-score');
+      if (scoreEl) scoreEl.textContent = (this.score || this.runScore || 0).toLocaleString();
+
+      const coinsEl = document.getElementById('failed-final-coins');
+      if (coinsEl) coinsEl.textContent = `${this.coinsCollected || 0} / ${(this.coins || []).length}`;
+
+      const enemiesEl = document.getElementById('failed-final-enemies');
+      if (enemiesEl) enemiesEl.textContent = this.enemiesDefeated || 0;
+
+      const missionStatusEl = document.getElementById('failed-mission-status');
+      if (missionStatusEl) {
+        const isComp = this.currentMission && this.currentMission.completed;
+        missionStatusEl.textContent = isComp ? 'OBJECTIVE CLEARED (+500 BONUS)' : 'MISSION INCOMPLETE';
+        missionStatusEl.style.color = isComp ? '#00ff88' : '#ff4466';
+      }
 
       setTimeout(() => {
         this.switchScreen('screen-level-failed');
-      }, 550);
+      }, 600);
+    }
+
+    failLevel(reason = 'obstacle') {
+      if (this.state !== 'PLAYING' || !this.player) return;
+
+      if (reason === 'pit') {
+        // Pit fall: if player has more than 1 life, deduct 1 life and respawn at level spawn point safely
+        if (this.lives > 1) {
+          this.applyPlayerDamage(1, 'pit');
+          this.player.x = this.currentLevel.spawn.x;
+          this.player.y = this.currentLevel.spawn.y;
+          this.player.vx = 0;
+          this.player.vy = 0;
+          this.addExplosion(this.player.x, this.player.y, '#00f0ff', 24);
+          const leadOffset = this.canvas.width * 0.40;
+          this.cameraX = Math.max(0, this.player.x - leadOffset);
+        } else {
+          // Zero lives left: Game Over
+          this.lives = 0;
+          this.updateHUD();
+          this.triggerGameOver('pit');
+        }
+      } else {
+        // Normal hazard or obstacle damage
+        this.applyPlayerDamage(1, reason);
+      }
     }
 
     completeLevel() {
@@ -3765,76 +3374,19 @@
       sound.playVictory();
       this.addVictoryConfetti(this.player.x, this.player.y);
 
-      // Save level completion and coins
-      if (!gameStateData.completedLevels.includes(this.currentLevelId)) {
-        gameStateData.completedLevels.push(this.currentLevelId);
-      }
+      // Check level-completion mission goals
+      this.checkMissionProgress('exit', 1);
+      this.checkMissionProgress('survival', 1);
 
-      // Progressive level unlock: unlock next level one by one as levels are completed
-      const nextLevelId = this.currentLevelId + 1;
-      let newlyUnlocked = false;
-      if (nextLevelId <= 10 && nextLevelId > (gameStateData.unlockedLevel || 1)) {
-        gameStateData.unlockedLevel = nextLevelId;
-        newlyUnlocked = true;
-      }
-      gameStateData.lastPlayedLevel = Math.min(10, nextLevelId <= 10 ? nextLevelId : this.currentLevelId);
+      const attemptsUsed = getLevelAttempt(this.currentLevelId);
+      const res = saveBestAttempt(this.currentLevelId, attemptsUsed);
 
-      if (!gameStateData.levelCoins) gameStateData.levelCoins = {};
-      const prevBestCoins = gameStateData.levelCoins[this.currentLevelId] || 0;
-      if (this.coinsCollected > prevBestCoins) {
-        gameStateData.levelCoins[this.currentLevelId] = this.coinsCollected;
-      }
-      let sumCoins = 0;
-      for (const id in gameStateData.levelCoins) {
-        sumCoins += gameStateData.levelCoins[id];
-      }
-      gameStateData.totalCoins = sumCoins;
-      persistData();
+      document.getElementById('complete-level-name').textContent = `LEVEL ${String(this.currentLevelId).padStart(2, '0')}: ${this.currentLevel.name}`;
+      document.getElementById('complete-attempts-val').textContent = attemptsUsed;
+      document.getElementById('complete-best-val').textContent = res.best;
 
-      // Update Victory Modal
-      const lvlNameEl = document.getElementById('complete-level-name');
-      if (lvlNameEl) lvlNameEl.textContent = `LEVEL ${String(this.currentLevelId).padStart(2, '0')}: ${this.currentLevel.name}`;
-
-      const livesValEl = document.getElementById('complete-lives-val');
-      if (livesValEl) {
-        let heartsStr = '';
-        for (let i = 0; i < 3; i++) heartsStr += i < this.lives ? '❤️' : '🖤';
-        livesValEl.textContent = `${heartsStr} (${this.lives}/3)`;
-      }
-
-      const coinsValEl = document.getElementById('complete-coins-val');
-      if (coinsValEl) {
-        coinsValEl.textContent = `🪙 ${this.coinsCollected} / ${this.totalLevelCoins}`;
-      }
-
-      const allCoinsBadge = document.getElementById('complete-all-coins-badge');
-      if (allCoinsBadge) {
-        allCoinsBadge.classList.toggle('hidden', this.coinsCollected < this.totalLevelCoins || this.totalLevelCoins === 0);
-      }
-
-      // Next level unlocked notification badge
-      const unlockBadge = document.getElementById('complete-unlock-badge');
-      if (unlockBadge) {
-        if (newlyUnlocked && nextLevelId <= 10) {
-          unlockBadge.textContent = `🔓 LEVEL ${String(nextLevelId).padStart(2, '0')} UNLOCKED!`;
-          unlockBadge.classList.remove('hidden');
-        } else if (this.currentLevelId === 10) {
-          unlockBadge.textContent = `🏆 MISSION COMPLETED: ALL 10 REALMS CONQUERED!`;
-          unlockBadge.classList.remove('hidden');
-        } else {
-          unlockBadge.classList.add('hidden');
-        }
-      }
-
-      // Update Next Level button text
-      const nextBtn = document.getElementById('btn-complete-next');
-      if (nextBtn) {
-        if (this.currentLevelId >= 10) {
-          nextBtn.textContent = '🏆 ALL MISSIONS CLEARED';
-        } else {
-          nextBtn.textContent = `NEXT LEVEL (${String(nextLevelId).padStart(2, '0')}) ❯`;
-        }
-      }
+      const newBestBadge = document.getElementById('complete-new-best-badge');
+      if (newBestBadge) newBestBadge.classList.toggle('hidden', !res.isNewBest);
 
       syncCurrentPlayerToLeaderboard();
       setTimeout(() => {
@@ -3844,378 +3396,175 @@
     }
 
     restartLevel(confirmed = false) {
+      if (confirmed && this.hasGameplayStarted) {
+        incrementLevelAttempt(this.currentLevelId);
+      }
+      // Fully restore 3 lives, score, coins, enemies, and obstacles
       this.startLevel(this.currentLevelId);
     }
 
-    addFloatingPopup(x, y, text, color = '#ffd700') {
-      this.floatingPopups.push({
-        x, y, text, color, life: 0.85, maxLife: 0.85, vy: -35
-      });
-    }
+    // --- SIMULTANEOUS MOVEMENT INPUT RESOLUTION ---
+    resolveMovementInputs() {
+      if (!this.player || !this.player.isAlive || this.state !== 'PLAYING') return;
 
-    updateFloatingPopups(dt) {
-      for (let i = this.floatingPopups.length - 1; i >= 0; i--) {
-        const fp = this.floatingPopups[i];
-        fp.life -= dt;
-        fp.y += fp.vy * dt;
-        if (fp.life <= 0) this.floatingPopups.splice(i, 1);
-      }
-    }
+      let moveX = 0;
+      let moveY = 0;
+      const keys = window.activeKeyboardKeys || new Set();
 
-    drawFloatingPopups() {
-      const ctx = this.ctx;
-      for (const fp of this.floatingPopups) {
-        const alpha = Math.max(0, fp.life / fp.maxLife);
-        ctx.save();
-        ctx.font = '700 13px "Chakra Petch", sans-serif';
-        ctx.fillStyle = fp.color;
-        ctx.globalAlpha = alpha;
-        ctx.textAlign = 'center';
-        ctx.shadowColor = fp.color;
-        ctx.shadowBlur = 8;
-        ctx.fillText(fp.text, Math.round(fp.x), Math.round(fp.y));
-        ctx.restore();
-      }
-    }
+      // Independent directional axes
+      if (keys.has('A') || keys.has('ARROWLEFT')) moveX -= 1;
+      if (keys.has('D') || keys.has('ARROWRIGHT')) moveX += 1;
+      if (keys.has('W') || keys.has('ARROWUP')) moveY -= 1;
+      if (keys.has('S') || keys.has('ARROWDOWN')) moveY += 1;
 
-    addCoinSparkles(x, y) {
-      for (let i = 0; i < 12; i++) {
-        const angle = (Math.PI * 2 / 12) * i + Math.random() * 0.3;
-        const spd = 40 + Math.random() * 60;
-        this.particles.push({
-          x, y,
-          vx: Math.cos(angle) * spd,
-          vy: Math.sin(angle) * spd,
-          color: i % 2 === 0 ? '#ffd700' : '#ffffff',
-          size: 2 + Math.random() * 2.5,
-          life: 0.45,
-          maxLife: 0.45
-        });
-      }
-    }
-
-    drawCoin(coin) {
-      const ctx = this.ctx;
-      const cx = coin.x;
-      const bobY = Math.sin(this.animTime * 4 + coin.x * 0.05) * 3;
-      const cy = coin.y + bobY;
-      const spin = Math.cos(this.animTime * 5 + coin.x * 0.08);
-      const absSpin = Math.max(0.18, Math.abs(spin));
-      const radius = 10;
-
-      ctx.save();
-      ctx.translate(Math.round(cx), Math.round(cy));
-
-      // Golden outer aura glow
-      const glowGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 16);
-      glowGrad.addColorStop(0, 'rgba(255, 230, 0, 0.45)');
-      glowGrad.addColorStop(0.6, 'rgba(255, 170, 0, 0.18)');
-      glowGrad.addColorStop(1, 'rgba(255, 170, 0, 0)');
-      ctx.fillStyle = glowGrad;
-      ctx.beginPath();
-      ctx.arc(0, 0, 16, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 3D Spinning coin rim
-      ctx.save();
-      ctx.scale(spin, 1);
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.fillStyle = spin > 0 ? '#ffb703' : '#fb8500';
-      ctx.fill();
-      ctx.strokeStyle = '#fff066';
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      // Inner coin face
-      ctx.beginPath();
-      ctx.arc(0, 0, radius - 3, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffd166';
-      ctx.fill();
-
-      // Star emblem
-      ctx.fillStyle = '#e07a00';
-      ctx.fillRect(-1.5, -4, 3, 8);
-      ctx.fillRect(-4, -1.5, 8, 3);
-
-      // Sparkle glint
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.beginPath();
-      ctx.arc(-radius * 0.35, -radius * 0.35, 2, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.restore();
-      ctx.restore();
-    }
-
-    addCheckpointBurst(x, y) {
-      for (let i = 0; i < 28; i++) {
-        const angle = (Math.PI * 2 / 28) * i + (Math.random() - 0.5) * 0.35;
-        const spd = 60 + Math.random() * 95;
-        const colors = ['#00f0ff', '#00ff88', '#ffffff', '#7000ff'];
-        this.particles.push({
-          x, y,
-          vx: Math.cos(angle) * spd,
-          vy: Math.sin(angle) * spd - 35,
-          color: colors[i % colors.length],
-          size: 2.5 + Math.random() * 3,
-          life: 0.65,
-          maxLife: 0.65
-        });
-      }
-    }
-
-    drawCheckpoint(cp) {
-      const ctx = this.ctx;
-      const x = Math.round(cp.x);
-      const platY = cp.platformY !== undefined ? Math.round(cp.platformY) : Math.round(cp.y + cp.height / 2);
-      const isActive = !!cp.active;
-
-      ctx.save();
-
-      // 1. Base Terminal Stand bolted on platform
-      const baseW = 32;
-      const baseH = 8;
-      ctx.fillStyle = '#0b1526';
-      ctx.fillRect(x - baseW / 2, platY - baseH, baseW, baseH);
-      ctx.strokeStyle = isActive ? '#00f0ff' : '#ffaa00';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(x - baseW / 2, platY - baseH, baseW, baseH);
-
-      // Base Neon Core Light
-      ctx.fillStyle = isActive ? '#00ff88' : '#ff8800';
-      ctx.fillRect(x - 7, platY - baseH + 2, 14, 4);
-
-      // 2. Dual Side Emitter Rods
-      ctx.strokeStyle = '#243b55';
-      ctx.lineWidth = 2;
-      // Left rod
-      ctx.beginPath();
-      ctx.moveTo(x - 10, platY - baseH);
-      ctx.lineTo(x - 10, platY - 42);
-      ctx.stroke();
-      // Right rod
-      ctx.beginPath();
-      ctx.moveTo(x + 10, platY - baseH);
-      ctx.lineTo(x + 10, platY - 42);
-      ctx.stroke();
-
-      // Emitter Pylon Tips
-      const tipColor = isActive ? '#00f0ff' : '#ffaa00';
-      ctx.fillStyle = tipColor;
-      ctx.beginPath();
-      ctx.arc(x - 10, platY - 42, 2.5, 0, Math.PI * 2);
-      ctx.arc(x + 10, platY - 42, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-
-      // 3. Central Energy Pillar / Hologram
-      const pulse = Math.sin(this.animTime * 6);
-      if (isActive) {
-        // ACTIVE STATE: Radiant Cyan/Green Holo-Column & Floating Flag
-        // Ground energy glow ring
-        ctx.save();
-        const groundGrad = ctx.createRadialGradient(x, platY - 2, 2, x, platY - 2, 22);
-        groundGrad.addColorStop(0, 'rgba(0, 255, 136, 0.6)');
-        groundGrad.addColorStop(0.5, 'rgba(0, 240, 255, 0.25)');
-        groundGrad.addColorStop(1, 'rgba(0, 240, 255, 0)');
-        ctx.fillStyle = groundGrad;
-        ctx.beginPath();
-        ctx.ellipse(x, platY - 2, 22, 6, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-
-        // Vertical holographic plasma beam
-        const beamGrad = ctx.createLinearGradient(x - 8, 0, x + 8, 0);
-        beamGrad.addColorStop(0, 'rgba(0, 240, 255, 0)');
-        beamGrad.addColorStop(0.3, 'rgba(0, 240, 255, 0.35)');
-        beamGrad.addColorStop(0.5, 'rgba(0, 255, 136, 0.55)');
-        beamGrad.addColorStop(0.7, 'rgba(0, 240, 255, 0.35)');
-        beamGrad.addColorStop(1, 'rgba(0, 240, 255, 0)');
-        ctx.fillStyle = beamGrad;
-        ctx.fillRect(x - 8, platY - 46, 16, 38);
-
-        // Rising cyber spark dashes
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.lineWidth = 1.5;
-        for (let i = 0; i < 3; i++) {
-          const sparkOffset = ((this.animTime * 45 + i * 14) % 36);
-          const sparkY = platY - baseH - sparkOffset;
-          const sparkX = x + Math.sin(this.animTime * 8 + i) * 5;
-          ctx.beginPath();
-          ctx.moveTo(sparkX, sparkY);
-          ctx.lineTo(sparkX, sparkY - 4);
-          ctx.stroke();
+      // Fallback to webcam hand-gesture if keyboard is not active
+      const now = performance.now();
+      if (moveX === 0 && moveY === 0 && gestureInputState && gestureInputState.active) {
+        if (now - gestureInputState.timestamp < 600) {
+          moveX = gestureInputState.x;
+          moveY = gestureInputState.y;
+        } else {
+          // Stale gesture timeout safety
+          gestureInputState.active = false;
         }
-
-        // Floating Holographic Checkpoint Crest / Banner
-        const bannerBob = Math.sin(this.animTime * 4) * 3;
-        const bannerY = platY - 50 + bannerBob;
-
-        // Holographic Flag / Diamond
-        ctx.save();
-        ctx.shadowColor = '#00f0ff';
-        ctx.shadowBlur = 10;
-
-        // Diamond emblem
-        ctx.fillStyle = '#00f0ff';
-        ctx.beginPath();
-        ctx.moveTo(x, bannerY - 10);
-        ctx.lineTo(x + 9, bannerY);
-        ctx.lineTo(x, bannerY + 10);
-        ctx.lineTo(x - 9, bannerY);
-        ctx.closePath();
-        ctx.fill();
-
-        // Checkmark inside diamond
-        ctx.strokeStyle = '#05101f';
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        ctx.moveTo(x - 4, bannerY);
-        ctx.lineTo(x - 1, bannerY + 4);
-        ctx.lineTo(x + 5, bannerY - 4);
-        ctx.stroke();
-        ctx.restore();
-
-        // Holographic text "SAVED"
-        ctx.font = '600 8px var(--font-pixel, monospace)';
-        ctx.fillStyle = '#00ffcc';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = '#00ff88';
-        ctx.shadowBlur = 6;
-        ctx.fillText('SAVED', x, bannerY - 14);
-
-      } else {
-        // INACTIVE STATE: Pulsing Amber Beacon
-        // Faint scan wave
-        const waveY = platY - baseH - ((this.animTime * 24) % 32);
-        ctx.strokeStyle = 'rgba(255, 170, 0, 0.35)';
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.moveTo(x - 8, waveY);
-        ctx.lineTo(x + 8, waveY);
-        ctx.stroke();
-
-        // Soft holographic core beam
-        ctx.fillStyle = `rgba(255, 170, 0, ${0.15 + pulse * 0.08})`;
-        ctx.fillRect(x - 6, platY - 42, 12, 34);
-
-        // Floating Inactive Diamond / Node
-        const bannerBob = Math.sin(this.animTime * 3) * 2;
-        const bannerY = platY - 48 + bannerBob;
-
-        ctx.save();
-        ctx.shadowColor = '#ffaa00';
-        ctx.shadowBlur = 6;
-        ctx.strokeStyle = '#ffaa00';
-        ctx.lineWidth = 1.8;
-        ctx.fillStyle = 'rgba(255, 170, 0, 0.4)';
-        ctx.beginPath();
-        ctx.moveTo(x, bannerY - 7);
-        ctx.lineTo(x + 7, bannerY);
-        ctx.lineTo(x, bannerY + 7);
-        ctx.lineTo(x - 7, bannerY);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-
-        // Holographic text "CHECKPOINT"
-        ctx.font = '7px var(--font-pixel, monospace)';
-        ctx.fillStyle = 'rgba(255, 170, 0, 0.8)';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = '#ff8800';
-        ctx.shadowBlur = 4;
-        ctx.fillText('CHECKPOINT', x, bannerY - 11);
       }
 
-      ctx.restore();
+      this.applyMovementInputs(moveX, moveY);
     }
 
-    // --- PHYSICS & COLLISIONS ---
-    updateControlsInput(dt) {
-      if (!this.player || !this.player.isAlive) return;
+    applyMovementInputs(moveX, moveY) {
       const p = this.player;
+      if (!p || !p.isAlive) return;
 
-      // Camera gesture active components (supports pure directions, diagonals & dual hands!)
-      const camLeft = isCameraActive && (rightConfirmedGesture === 'LEFT' || rightConfirmedGesture === 'UP_LEFT' || rightConfirmedGesture === 'DOWN_LEFT' || leftConfirmedGesture === 'LEFT');
-      const camRight = isCameraActive && (rightConfirmedGesture === 'RIGHT' || rightConfirmedGesture === 'UP_RIGHT' || rightConfirmedGesture === 'DOWN_RIGHT' || leftConfirmedGesture === 'RIGHT');
-      const camDown = isCameraActive && (rightConfirmedGesture === 'DOWN' || rightConfirmedGesture === 'DOWN_LEFT' || rightConfirmedGesture === 'DOWN_RIGHT' || leftConfirmedGesture === 'DOWN');
-      const camUp = isCameraActive && (rightConfirmedGesture === 'UP' || rightConfirmedGesture === 'UP_LEFT' || rightConfirmedGesture === 'UP_RIGHT' || leftConfirmedGesture === 'UP');
-
-      const leftPressed = activeKeys.has('KeyA') || activeKeys.has('ArrowLeft') || activeKeys.has('Numpad4') || activeKeys.has('a') || activeKeys.has('A') || activeKeys.has('arrowleft') || activeKeys.has('Left') || touchMoveDirection === 'LEFT' || camLeft;
-      const rightPressed = activeKeys.has('KeyD') || activeKeys.has('ArrowRight') || activeKeys.has('Numpad6') || activeKeys.has('d') || activeKeys.has('D') || activeKeys.has('arrowright') || activeKeys.has('Right') || touchMoveDirection === 'RIGHT' || camRight;
-      const downPressed = activeKeys.has('KeyS') || activeKeys.has('ArrowDown') || activeKeys.has('Numpad2') || activeKeys.has('s') || activeKeys.has('S') || activeKeys.has('arrowdown') || activeKeys.has('Down') || camDown;
-      const upPressed = activeKeys.has('KeyW') || activeKeys.has('ArrowUp') || activeKeys.has('Numpad8') || activeKeys.has('w') || activeKeys.has('W') || activeKeys.has('arrowup') || activeKeys.has('Up') || camUp;
-
-      if (leftPressed || rightPressed || downPressed || upPressed) {
+      if (moveX !== 0 || moveY !== 0) {
         this.hasGameplayStarted = true;
       }
 
-      // Horizontal velocity calculation supporting simultaneous keys, camera gestures & direction rollover
-      if (leftPressed && rightPressed) {
-        if (lastHorizontalKey === 'LEFT') {
-          p.facing = -1;
-          p.vx = -PLAYER_SPEED;
-          if (p.isGrounded && p.state !== 'attack') {
-            p.state = 'walk';
-          }
-        } else if (lastHorizontalKey === 'RIGHT') {
-          p.facing = 1;
-          p.vx = PLAYER_SPEED;
-          if (p.isGrounded && p.state !== 'attack') {
-            p.state = 'walk';
-          }
-        } else {
-          p.vx = 0;
-          if (p.isGrounded && p.state !== 'attack') {
-            p.state = 'idle';
-          }
-        }
-      } else if (leftPressed) {
+      // Normalize diagonal vector to prevent diagonal speed boosting
+      const isDiagonal = moveX !== 0 && moveY !== 0;
+      const speedMultiplier = isDiagonal ? 0.88 : 1.0;
+
+      // Horizontal movement axis
+      if (moveX < 0) {
         p.facing = -1;
-        p.vx = -PLAYER_SPEED;
-        if (p.isGrounded && p.state !== 'attack') {
-          p.state = 'walk';
-        }
-      } else if (rightPressed) {
+        p.vx = -PLAYER_SPEED * speedMultiplier;
+        if (p.isGrounded && p.state !== 'attack') p.state = 'walk';
+      } else if (moveX > 0) {
         p.facing = 1;
-        p.vx = PLAYER_SPEED;
-        if (p.isGrounded && p.state !== 'attack') {
-          p.state = 'walk';
-        }
+        p.vx = PLAYER_SPEED * speedMultiplier;
+        if (p.isGrounded && p.state !== 'attack') p.state = 'walk';
       } else {
-        // Neither left nor right is actively held
-        if (p.isGrounded) {
+        if (p.state !== 'attack' || !p.attackType || !p.attackType.startsWith('dash')) {
           p.vx = 0;
-          if (p.state !== 'attack') {
-            p.state = 'idle';
-          }
+          if (p.isGrounded && p.state !== 'attack') p.state = 'idle';
         }
       }
 
-      // Down / Crouch / Fast descent
-      if (downPressed) {
-        p.vx *= 0.65;
+      // Vertical movement axis
+      if (moveY < 0) {
+        // Jump / Ascent - maintain full jump force during simultaneous diagonal jumps
+        if (p.isGrounded) {
+          p.vy = -JUMP_FORCE;
+          p.isGrounded = false;
+          sound.playJump();
+          this.addDustPuff(p.x, p.y + p.height / 2);
+        }
+      } else if (moveY > 0) {
+        // Fast descent / crouch drop
         if (!p.isGrounded) {
-          p.vy += 1.2;
+          p.vy += 1.6;
         }
       }
     }
 
+    // --- ENEMY AI AND ATTACK STATE MACHINE ---
+    updateEnemiesAI(dt) {
+      if (!this.currentLevel || !this.currentLevel.enemies || !this.player || !this.player.isAlive) return;
+      const p = this.player;
+
+      for (const enemy of this.currentLevel.enemies) {
+        if (!enemy.isAlive) continue;
+
+        if (!enemy.aiState) {
+          enemy.aiState = 'patrol';
+          enemy.aiTimer = 0;
+          enemy.attackCooldown = 0;
+          enemy.hurtTimer = 0;
+          enemy.baseVx = enemy.vx || (enemy.type === 'patrol_drone' ? 1.8 : (enemy.type === 'titan_guard' ? 0.9 : 1.2));
+          enemy.detectionRange = enemy.type === 'patrol_drone' ? 220 : 170;
+          enemy.attackRange = enemy.type === 'titan_guard' ? 55 : 42;
+        }
+
+        // Damage flinch state
+        if (enemy.hurtTimer > 0) {
+          enemy.hurtTimer -= dt;
+          if (enemy.hurtTimer <= 0) enemy.aiState = 'patrol';
+          continue;
+        }
+
+        // Attack cooldown timer
+        if (enemy.attackCooldown > 0) {
+          enemy.attackCooldown -= dt;
+        }
+
+        const dx = p.x - enemy.x;
+        const dy = p.y - enemy.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // State Machine: windup telegraph -> attack strike -> cooldown -> chase -> patrol
+        if (enemy.aiState === 'windup') {
+          enemy.aiTimer -= dt;
+          enemy.facing = dx > 0 ? 1 : -1;
+          if (enemy.aiTimer <= 0) {
+            // Execute attack strike
+            enemy.aiState = 'attack';
+            enemy.aiTimer = 0.22;
+            if (dist <= enemy.attackRange + 15 && this.invulnerableTimer <= 0) {
+              this.applyPlayerDamage(1, 'enemy');
+            }
+          }
+        } else if (enemy.aiState === 'attack') {
+          enemy.aiTimer -= dt;
+          if (enemy.aiTimer <= 0) {
+            enemy.aiState = 'cooldown';
+            enemy.attackCooldown = 1.3;
+          }
+        } else if (dist <= enemy.attackRange && enemy.attackCooldown <= 0) {
+          // Enter 350ms windup telegraph warning
+          enemy.aiState = 'windup';
+          enemy.aiTimer = 0.35;
+          enemy.facing = dx > 0 ? 1 : -1;
+        } else if (dist <= enemy.detectionRange) {
+          // Alert and chase player
+          enemy.aiState = 'chase';
+          enemy.facing = dx > 0 ? 1 : -1;
+          const chaseSpeed = (Math.abs(enemy.baseVx) * 1.35) * enemy.facing;
+          enemy.vx = chaseSpeed;
+          enemy.x += enemy.vx;
+        } else {
+          // Standard patrol
+          enemy.aiState = 'patrol';
+          enemy.x += enemy.vx;
+          enemy.travelDist = (enemy.travelDist || 0) + Math.abs(enemy.vx);
+          if (enemy.travelDist >= (enemy.maxTravel || 120)) {
+            enemy.vx = -enemy.vx;
+            enemy.facing = enemy.vx > 0 ? 1 : -1;
+            enemy.travelDist = 0;
+          }
+        }
+      }
+    }
+
+    // --- PHYSICS & COLLISIONS ---
     updatePhysics(dt) {
       if (!this.player || !this.player.isAlive || !this.currentLevel) return;
 
+      // Apply simultaneous input resolution (W+A, W+D, Space, diagonals)
+      this.resolveMovementInputs();
+
       const p = this.player;
-
-      // Update multi-key continuous keyboard/touch input
-      this.updateControlsInput(dt);
-
       p.vy += 1.28; // Turbo-speed ninja gravity (blazing fast jump takeoff & landing)
       if (p.vy > 18) p.vy = 18;
-
-      if (p.jumpBuffer > 0) {
-        p.jumpBuffer -= dt;
-      }
 
       // Horizontal
       p.x += p.vx;
@@ -4236,38 +3585,35 @@
         else p.state = 'idle';
       }
 
-      // Shadow Fighter Ghost Trail & Dark Smoke Wisps (bypassed in Low-RAM mode to save memory allocations & GC pauses)
-      const isLowRam = gameStateData.settings && (gameStateData.settings.perfProfile === 'low_ram');
-      if (!isLowRam && gameStateData.settings.shadows !== false) {
-        this.ghostTimer = (this.ghostTimer || 0) + dt;
-        if (this.ghostTimer >= 0.045) {
-          this.ghostTimer = 0;
-          const isDashing = Math.abs(p.vx) > 0.3 || !p.isGrounded || p.state === 'attack';
-          if (isDashing) {
-            this.shadowGhosts.push({
-              x: p.x,
-              y: p.y,
-              facing: p.facing,
-              scale: p.scale || 1.5,
-              state: p.state,
-              attackType: p.attackType,
-              life: 0.28,
-              maxLife: 0.28
-            });
-            if (this.shadowGhosts.length > 8) this.shadowGhosts.shift();
+      // Shadow Fighter Ghost Trail & Dark Smoke Wisps
+      this.ghostTimer = (this.ghostTimer || 0) + dt;
+      if (this.ghostTimer >= 0.045) {
+        this.ghostTimer = 0;
+        const isDashing = Math.abs(p.vx) > 0.3 || !p.isGrounded || p.state === 'attack';
+        if (isDashing) {
+          this.shadowGhosts.push({
+            x: p.x,
+            y: p.y,
+            facing: p.facing,
+            scale: p.scale || 1.5,
+            state: p.state,
+            attackType: p.attackType,
+            life: 0.28,
+            maxLife: 0.28
+          });
+          if (this.shadowGhosts.length > 8) this.shadowGhosts.shift();
 
-            // Spawn Shadow Smoke Wisp Particle
-            this.particles.push({
-              x: p.x + (Math.random() * 12 - 6),
-              y: p.y + p.height * 0.25 + (Math.random() * 8 - 4),
-              vx: -p.vx * 0.2 + (Math.random() * 0.6 - 0.3),
-              vy: -Math.random() * 0.8 - 0.2,
-              color: Math.random() > 0.4 ? '#05070f' : (Math.random() > 0.5 ? '#111728' : '#00f0ff'),
-              size: Math.random() * 4 + 2,
-              life: 0.35,
-              maxLife: 0.35
-            });
-          }
+          // Spawn Shadow Smoke Wisp Particle
+          this.particles.push({
+            x: p.x + (Math.random() * 12 - 6),
+            y: p.y + p.height * 0.25 + (Math.random() * 8 - 4),
+            vx: -p.vx * 0.2 + (Math.random() * 0.6 - 0.3),
+            vy: -Math.random() * 0.8 - 0.2,
+            color: Math.random() > 0.4 ? '#05070f' : (Math.random() > 0.5 ? '#111728' : '#00f0ff'),
+            size: Math.random() * 4 + 2,
+            life: 0.35,
+            maxLife: 0.35
+          });
         }
       }
 
@@ -4278,70 +3624,35 @@
         if (g.life <= 0) this.shadowGhosts.splice(i, 1);
       }
 
-      // Invulnerability countdown
-      if (p.invulnerableTimer > 0) {
-        p.invulnerableTimer -= dt;
-      }
-
       // Check Bottomless Pit
       if (p.y > this.currentLevel.height + 60) {
-        this.takeDamage('pit');
+        this.failLevel('pit');
         return;
       }
 
-      // Check Hazards (Spikes & Lasers)
-      if (p.invulnerableTimer <= 0) {
-        for (const haz of this.currentLevel.hazards) {
-          if (this.checkAABB(p, haz)) {
-            this.takeDamage('hazard');
-            return;
+      // Check Hazards (Spikes & Lasers) - exactly one life deduction with 1.6s invulnerability
+      for (const haz of this.currentLevel.hazards) {
+        if (this.checkAABB(p, haz)) {
+          if (this.invulnerableTimer <= 0) {
+            this.applyPlayerDamage(1, 'hazard');
           }
+          break;
         }
       }
 
-      // Check Checkpoint Beacons
-      if (this.currentLevel.checkpoints) {
-        for (const cp of this.currentLevel.checkpoints) {
-          if (!cp.active && this.checkAABB(p, cp)) {
-            cp.active = true;
-            const respawnY = (cp.platformY !== undefined ? cp.platformY : (cp.y + cp.height / 2)) - (p.height / 2);
-            if (!this.activeCheckpoint || cp.x >= this.activeCheckpoint.x) {
-              this.activeCheckpoint = { x: cp.x, y: respawnY };
-            }
-            sound.playCheckpoint();
-            this.addFloatingPopup(cp.x, cp.y - 48, '🚩 CHECKPOINT SAVED!', '#00f0ff');
-            this.addCheckpointBurst(cp.x, cp.y);
-            this.screenShake = 6;
-            this.updateHUDStats();
-          }
-        }
-      }
-
-      // Check Collectible Coins (Kept on life loss!)
-      if (this.currentLevel.coins) {
-        for (const coin of this.currentLevel.coins) {
-          if (!coin.collected && this.checkAABB(p, coin)) {
-            coin.collected = true;
-            this.coinsCollected++;
-            sound.playCoinPickup();
-            this.addFloatingPopup(coin.x, coin.y - 14, '+100', '#ffd700');
-            this.addCoinSparkles(coin.x, coin.y);
-            this.updateHUDStats();
-
-            // Real-time leaderboard score sync
-            if (!gameStateData.levelCoins) gameStateData.levelCoins = {};
-            const prev = gameStateData.levelCoins[this.currentLevelId] || 0;
-            if (this.coinsCollected > prev) {
-              gameStateData.levelCoins[this.currentLevelId] = this.coinsCollected;
-              let sumCoins = 0;
-              for (const id in gameStateData.levelCoins) {
-                sumCoins += gameStateData.levelCoins[id];
-              }
-              gameStateData.totalCoins = sumCoins;
-              persistData();
-              syncCurrentPlayerToLeaderboard();
-            }
-          }
+      // Collect glowing coins (+100 points, floating text, sound, HUD update)
+      for (const coin of (this.coins || [])) {
+        if (!coin.collected && this.checkAABB(p, coin)) {
+          coin.collected = true;
+          this.coinsCollected++;
+          this.score = (this.score || 0) + 100;
+          this.runScore = (this.runScore || 0) + 100;
+          this.addExplosion(coin.x, coin.y, '#ffd84a', 14);
+          this.addFloatingText(coin.x, coin.y - 14, '+100', '#ffd700', 14);
+          if (sound.playCoin) sound.playCoin();
+          else sound.playEnemyDefeat();
+          this.checkMissionProgress('coins', 1);
+          this.updateHUD();
         }
       }
 
@@ -4375,13 +3686,6 @@
             if (plat.isMoving) {
               p.x += plat.vx;
               p.y += plat.vy;
-            }
-            if (p.jumpBuffer > 0) {
-              p.jumpBuffer = 0;
-              p.vy = -JUMP_FORCE;
-              p.isGrounded = false;
-              sound.playJump();
-              this.addDustPuff(p.x, p.y + p.height / 2);
             }
           } else if (p.vy < 0) {
             p.y = plat.y + plat.height + halfH;
@@ -4436,18 +3740,33 @@
         if (isAttacking && this.checkAABB(slashHitbox, enemy)) {
           const dmg = p.attackType === 'heavy' ? 2 : 1;
           enemy.health = (enemy.health || 1) - dmg;
+          enemy.aiState = 'hurt';
+          enemy.hurtTimer = 0.25;
           this.addSlashEffect(enemy.x, enemy.y, p.facing);
+
           if (enemy.health <= 0) {
             enemy.isAlive = false;
-            this.addExplosion(enemy.x, enemy.y, '#ff007f', 25);
-            sound.playEnemyDefeat();
+            this.score = (this.score || 0) + 250;
+            this.runScore = (this.runScore || 0) + 250;
+            this.enemiesDefeated = (this.enemiesDefeated || 0) + 1;
+            this.addExplosion(enemy.x, enemy.y, '#ff007f', 30);
+            this.addFloatingText(enemy.x, enemy.y - 18, '+250', '#ff007f', 16);
+            if (sound.playEnemyHit) sound.playEnemyHit();
+            else sound.playEnemyDefeat();
+            this.checkMissionProgress('defeat', 1);
+            this.updateHUD();
+          } else {
+            sound.playAttack('swift');
+            this.addFloatingText(enemy.x, enemy.y - 14, '-1 HP', '#ffd700', 13);
           }
           continue;
         }
 
-        // 2. Enemy hit player
-        if (p.invulnerableTimer <= 0 && this.checkAABB(p, enemy)) {
-          this.takeDamage('enemy');
+        // 2. Enemy physical contact hit player
+        if (this.checkAABB(p, enemy)) {
+          if (this.invulnerableTimer <= 0) {
+            this.applyPlayerDamage(1, 'enemy');
+          }
           return;
         }
       }
@@ -4459,9 +3778,13 @@
           if (tb.isDestroyed) continue;
           if (isAttacking && this.checkAABB(slashHitbox, tb)) {
             tb.isDestroyed = true;
+            this.score = (this.score || 0) + 150;
+            this.runScore = (this.runScore || 0) + 150;
+            this.addFloatingText(tb.x, tb.y - 16, '+150', '#00f0ff', 14);
             this.addExplosion(tb.x, tb.y, '#00f0ff', 30);
             sound.playEnemyDefeat();
             this.screenShake = 6;
+            this.updateHUD();
           }
         }
       }
@@ -4482,17 +3805,8 @@
           }
         }
       }
-      // Enemies Patrol
-      for (const enemy of this.currentLevel.enemies) {
-        if (!enemy.isAlive) continue;
-        enemy.x += enemy.vx;
-        enemy.travelDist = (enemy.travelDist || 0) + Math.abs(enemy.vx);
-        if (enemy.travelDist >= enemy.maxTravel) {
-          enemy.vx = -enemy.vx;
-          enemy.facing = enemy.vx > 0 ? 1 : -1;
-          enemy.travelDist = 0;
-        }
-      }
+      // Update Enemy AI State Machine & Movement
+      this.updateEnemiesAI(dt);
     }
 
     // --- PARTICLES & EFFECTS ---
@@ -4514,9 +3828,7 @@
     }
 
     addExplosion(x, y, color = '#ff007f', count = 25) {
-      const budget = (gameStateData.settings && gameStateData.settings.particleBudget) || 'low';
-      const actualCount = budget === 'high' ? count : (budget === 'medium' ? Math.round(count * 0.6) : Math.max(6, Math.round(count * 0.35)));
-      for (let i = 0; i < actualCount; i++) {
+      for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
         const spd = Math.random() * 4 + 1;
         this.particles.push({
@@ -4527,9 +3839,7 @@
     }
 
     addDustPuff(x, y) {
-      const budget = (gameStateData.settings && gameStateData.settings.particleBudget) || 'low';
-      const count = budget === 'low' ? 3 : 6;
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < 6; i++) {
         this.particles.push({
           x: x + (Math.random() * 12 - 6),
           y,
@@ -4543,11 +3853,24 @@
       }
     }
 
+    addFloatingText(x, y, text, color = '#ffd700', size = 15) {
+      this.particles.push({
+        type: 'text',
+        text,
+        x,
+        y,
+        vx: Math.random() * 0.6 - 0.3,
+        vy: -1.8,
+        color,
+        size,
+        life: 0.85,
+        maxLife: 0.85
+      });
+    }
+
     addVictoryConfetti(x, y) {
-      const budget = (gameStateData.settings && gameStateData.settings.particleBudget) || 'low';
-      const count = budget === 'high' ? 50 : (budget === 'medium' ? 30 : 16);
       const colors = ['#00f0ff', '#00ff88', '#ffaa00', '#ff007f', '#ffffff'];
-      for (let i = 0; i < count; i++) {
+      for (let i = 0; i < 50; i++) {
         const angle = Math.random() * Math.PI * 2;
         const spd = Math.random() * 5 + 2;
         this.particles.push({
@@ -4562,21 +3885,35 @@
         const p = this.particles[i];
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.08;
+        if (p.type !== 'text') {
+          p.vy += 0.08;
+        } else {
+          p.vy *= 0.94; // Smooth upward deceleration for floating score numbers
+        }
         p.life -= dt;
         if (p.life <= 0) this.particles.splice(i, 1);
       }
     }
 
     renderParticles() {
-      if (!this.particles || this.particles.length === 0) return;
-      for (let i = 0; i < this.particles.length; i++) {
-        const p = this.particles[i];
-        this.ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
-        this.ctx.fillStyle = p.color;
-        this.ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+      for (const p of this.particles) {
+        this.ctx.save();
+        const alpha = Math.max(0, p.life / p.maxLife);
+        this.ctx.globalAlpha = alpha;
+        if (p.type === 'text') {
+          this.ctx.shadowBlur = 10;
+          this.ctx.shadowColor = p.color || '#ffd700';
+          this.ctx.fillStyle = p.color || '#ffffff';
+          this.ctx.font = `900 ${p.size || 15}px 'Rajdhani', sans-serif`;
+          this.ctx.textAlign = 'center';
+          this.ctx.textBaseline = 'middle';
+          this.ctx.fillText(p.text, Math.round(p.x), Math.round(p.y));
+        } else {
+          this.ctx.fillStyle = p.color;
+          this.ctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+        }
+        this.ctx.restore();
       }
-      this.ctx.globalAlpha = 1.0;
     }
 
     // --- RENDERING ---
@@ -4594,7 +3931,7 @@
 
       const worldIdx = this.currentLevel ? (this.currentLevel.world - 1) : 0;
 
-      // Parallax Background (Distinct Atmosphere per Level: Nature, Space, Smart City, Graveyard, Celestial Ruins)
+      // Parallax Background
       this.drawParallaxBackground(w, h, this.currentLevel);
 
       // Camera Translation
@@ -4606,6 +3943,57 @@
         for (const plat of this.currentLevel.platforms) this.drawPlatform(plat, this.currentLevel);
         // Hazards
         for (const haz of this.currentLevel.hazards) this.drawHazard(haz);
+
+        // 3D Rotating Glowing Cyber Gold Coins
+        for (const coin of (this.coins || [])) {
+          if (coin.collected) continue;
+          const bob = Math.sin(this.animTime * 4.2 + coin.phase) * 5;
+          const rotCos = Math.cos(this.animTime * 3.8 + coin.phase);
+          const scaleX = Math.max(0.18, Math.abs(rotCos));
+
+          this.ctx.save();
+          this.ctx.translate(coin.x, coin.y + bob);
+
+          // Outer Neon Gold Bloom Glow
+          this.ctx.shadowBlur = 18;
+          this.ctx.shadowColor = '#ffd700';
+
+          // Coin Rim / Thickness when angled
+          if (scaleX > 0.3) {
+            this.ctx.fillStyle = '#b8860b';
+            this.ctx.beginPath();
+            this.ctx.ellipse(rotCos > 0 ? 1.5 : -1.5, 0, 11 * scaleX, 11, 0, 0, Math.PI * 2);
+            this.ctx.fill();
+          }
+
+          // Main Face of Coin
+          const coinGrad = this.ctx.createLinearGradient(-11 * scaleX, -11, 11 * scaleX, 11);
+          coinGrad.addColorStop(0, '#fff3a8');
+          coinGrad.addColorStop(0.4, '#ffd700');
+          coinGrad.addColorStop(1, '#d4af37');
+          this.ctx.fillStyle = coinGrad;
+          this.ctx.beginPath();
+          this.ctx.ellipse(0, 0, 10 * scaleX, 10, 0, 0, Math.PI * 2);
+          this.ctx.fill();
+
+          // Outer Highlight Ring
+          this.ctx.shadowBlur = 0;
+          this.ctx.strokeStyle = '#ffffff';
+          this.ctx.lineWidth = 1.2;
+          this.ctx.stroke();
+
+          // Cyber Credit Glyph ($ / ◈)
+          if (scaleX > 0.45) {
+            this.ctx.fillStyle = '#7a4b00';
+            this.ctx.font = `bold ${Math.round(11 * Math.min(1, scaleX * 1.4))}px sans-serif`;
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText('◈', 0, 0.5);
+          }
+
+          this.ctx.restore();
+        }
+
         // Goal
         if (this.currentLevel.goal) this.drawGoal(this.currentLevel.goal);
         // Enemies
@@ -4618,18 +4006,6 @@
             if (!tb.isDestroyed) this.drawTargetBlock(tb);
           }
         }
-        // Checkpoint Beacons
-        if (this.currentLevel.checkpoints) {
-          for (const cp of this.currentLevel.checkpoints) {
-            this.drawCheckpoint(cp);
-          }
-        }
-        // Collectible Coins
-        if (this.currentLevel.coins) {
-          for (const coin of this.currentLevel.coins) {
-            if (!coin.collected) this.drawCoin(coin);
-          }
-        }
         // Shadow Fighter Ghost Afterimages
         if (this.shadowGhosts) {
           for (const g of this.shadowGhosts) {
@@ -4639,22 +4015,38 @@
         }
         // Player
         if (this.player && this.player.isAlive) this.drawPlayer(this.player);
-        // Particles
+        // Particles & Floating Scores
         this.renderParticles();
-        // Floating Popups (+100, -1 LIFE)
-        this.drawFloatingPopups();
       }
 
       this.ctx.restore();
-      this.ctx.restore();
 
-      // Screen Damage Vignette Flash when taking damage
-      if (this.damageFlashTimer > 0) {
+      // Compact in-game HUD overlay matching mission tracker
+      if (this.state === 'PLAYING') {
         this.ctx.save();
-        this.ctx.fillStyle = `rgba(255, 30, 60, ${Math.min(0.4, this.damageFlashTimer * 1.1)})`;
-        this.ctx.fillRect(0, 0, w, h);
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        if (this.currentMission) {
+          this.ctx.fillStyle = 'rgba(5, 10, 28, 0.85)';
+          this.ctx.strokeStyle = 'rgba(0,240,255,0.8)';
+          this.ctx.lineWidth = 1.5;
+          this.ctx.beginPath();
+          this.ctx.roundRect(16, 16, 260, 76, 12);
+          this.ctx.fill();
+          this.ctx.stroke();
+          this.ctx.textAlign = 'left';
+          this.ctx.fillStyle = '#00f0ff';
+          this.ctx.font = 'bold 13px sans-serif';
+          this.ctx.fillText(`MISSION • ${this.currentMission.title.toUpperCase()}`, 30, 38);
+          this.ctx.fillStyle = '#ffffff';
+          this.ctx.font = '12px sans-serif';
+          this.ctx.fillText(`COINS  ${this.coinsCollected || 0}/${(this.coins || []).length}   •   SCORE  ${(this.score || this.runScore || 0).toLocaleString()}`, 30, 59);
+          const alive = this.currentLevel ? this.currentLevel.enemies.filter(e => e.isAlive).length : 0;
+          this.ctx.fillStyle = '#ff4f9a';
+          this.ctx.fillText(`HOSTILES  ${this.enemiesDefeated || 0} DEFEATED (${alive} REMAINING)`, 30, 79);
+        }
         this.ctx.restore();
       }
+      this.ctx.restore();
     }
 
     drawTargetBlock(tb) {
@@ -4679,113 +4071,112 @@
       this.ctx.restore();
     }
 
-    // =========================================================================
-    // PARALLAX BACKGROUND SYSTEM: 10 UNIQUE HANDCRAFTED BACKGROUNDS (2 PER CHAPTER)
-    // =========================================================================
     drawParallaxBackground(w, h, levelOrWorld) {
-      const levelId = (levelOrWorld && typeof levelOrWorld === 'object') ? (levelOrWorld.id || 1) : (levelOrWorld || 1);
       const theme = getLevelTheme(levelOrWorld);
+      const levelId = (levelOrWorld && typeof levelOrWorld === 'object') ? (levelOrWorld.id || 1) : (levelOrWorld || 1);
 
-      switch (levelId) {
-        case 1: this.drawLevel1Background(w, h, theme); break;
-        case 2: this.drawLevel2Background(w, h, theme); break;
-        case 3: this.drawLevel5Background(w, h, theme); break;
-        case 4: this.drawLevel6Background(w, h, theme); break;
-        case 5: this.drawLevel9Background(w, h, theme); break;
-        case 6: this.drawLevel10Background(w, h, theme); break;
-        case 7: this.drawLevel13Background(w, h, theme); break;
-        case 8: this.drawLevel14Background(w, h, theme); break;
-        case 9: this.drawLevel17Background(w, h, theme); break;
-        case 10: this.drawLevel20Background(w, h, theme); break;
-        default: this.drawLevel1Background(w, h, theme); break;
+      if (theme.type === 'nature') {
+        this.drawNatureBackground(w, h, theme, levelId);
+      } else if (theme.type === 'space') {
+        this.drawSpaceBackground(w, h, theme, levelId);
+      } else if (theme.type === 'graveyard') {
+        this.drawGraveyardBackground(w, h, theme, levelId);
+      } else if (theme.type === 'ruins' || theme.type === 'nexus') {
+        this.drawRuinsBackground(w, h, theme, levelId);
+      } else {
+        this.drawSmartCityBackground(w, h, theme, levelId);
       }
     }
 
-    // -------------------------------------------------------------------------
-    // LEVEL 1: NEON AWAKENING (Cyberpunk Midnight Metropolis)
-    // -------------------------------------------------------------------------
-    drawLevel1Background(w, h, theme) {
+    // =========================================================================
+    // 1. SMART CITY PARALLAX BACKGROUND (Levels 1-4)
+    // =========================================================================
+    drawSmartCityBackground(w, h, theme, levelId) {
+      // Sky Gradient
       const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#020412');
-      grad.addColorStop(0.55, '#071330');
-      grad.addColorStop(1, '#0e244d');
+      grad.addColorStop(0, '#030612');
+      grad.addColorStop(0.55, '#09152e');
+      grad.addColorStop(1, '#13284d');
       this.ctx.fillStyle = grad;
       this.ctx.fillRect(0, 0, w, h);
 
-      // Cyber Stars
+      // Twinkling Cyber Stars
       this.ctx.save();
-      for (let i = 0; i < 40; i++) {
+      for (let i = 0; i < 35; i++) {
         const sx = ((i * 137.5 + this.cameraX * 0.02) % (w + 40)) - 20;
-        const sy = (i * 91.3) % (h * 0.55);
+        const sy = (i * 91.3) % (h * 0.6);
         const flicker = Math.sin(this.animTime * 3 + i) * 0.4 + 0.6;
         this.ctx.fillStyle = i % 3 === 0 ? '#00f0ff' : '#ffffff';
-        this.ctx.globalAlpha = flicker * 0.5;
-        this.ctx.fillRect(sx, sy, 1.6, 1.6);
+        this.ctx.globalAlpha = flicker * 0.45;
+        this.ctx.fillRect(sx, sy, 1.5, 1.5);
       }
       this.ctx.restore();
 
-      // Holographic Ringed Cyber-Moon
+      // Holographic Neon Moon with Corporate Ring
       this.ctx.save();
       const moonX = w * 0.78 - (this.cameraX * 0.02) % (w * 0.5);
       const moonY = h * 0.20;
       const moonRad = 44;
       const moonGlow = this.ctx.createRadialGradient(moonX, moonY, moonRad * 0.3, moonX, moonY, moonRad * 1.8);
-      moonGlow.addColorStop(0, 'rgba(0, 240, 255, 0.28)');
+      moonGlow.addColorStop(0, 'rgba(0, 240, 255, 0.25)');
       moonGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       this.ctx.fillStyle = moonGlow;
       this.ctx.beginPath();
       this.ctx.arc(moonX, moonY, moonRad * 1.8, 0, Math.PI * 2);
       this.ctx.fill();
 
-      this.ctx.fillStyle = '#0a1d38';
+      this.ctx.fillStyle = '#0f2240';
       this.ctx.beginPath();
       this.ctx.arc(moonX, moonY, moonRad, 0, Math.PI * 2);
       this.ctx.fill();
 
       this.ctx.strokeStyle = '#00f0ff';
-      this.ctx.lineWidth = 2;
-      this.ctx.globalAlpha = 0.4;
+      this.ctx.lineWidth = 1.8;
+      this.ctx.globalAlpha = 0.35;
       this.ctx.beginPath();
-      this.ctx.ellipse(moonX, moonY, moonRad * 1.65, moonRad * 0.36, -Math.PI / 5, 0, Math.PI * 2);
+      this.ctx.ellipse(moonX, moonY, moonRad * 1.6, moonRad * 0.35, -Math.PI / 5, 0, Math.PI * 2);
       this.ctx.stroke();
       this.ctx.restore();
 
-      // Sweeping Cyan Searchlight
+      // Sweeping Cyber Searchlights
       this.ctx.save();
-      const beamAngle = Math.sin(this.animTime * 0.8) * 0.32;
-      const beamGrad = this.ctx.createLinearGradient(w * 0.3, h, w * 0.3 + Math.sin(beamAngle) * 320, 0);
-      beamGrad.addColorStop(0, 'rgba(0, 240, 255, 0.16)');
+      const beamAngle = Math.sin(this.animTime * 0.8) * 0.3;
+      const beamGrad = this.ctx.createLinearGradient(w * 0.3, h, w * 0.3 + Math.sin(beamAngle) * 300, 0);
+      beamGrad.addColorStop(0, 'rgba(0, 240, 255, 0.15)');
       beamGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       this.ctx.fillStyle = beamGrad;
       this.ctx.beginPath();
-      this.ctx.moveTo(w * 0.3 - 12, h);
-      this.ctx.lineTo(w * 0.3 + Math.sin(beamAngle) * 420 - 35, 0);
-      this.ctx.lineTo(w * 0.3 + Math.sin(beamAngle) * 420 + 35, 0);
-      this.ctx.lineTo(w * 0.3 + 12, h);
+      this.ctx.moveTo(w * 0.3 - 10, h);
+      this.ctx.lineTo(w * 0.3 + Math.sin(beamAngle) * 400 - 30, 0);
+      this.ctx.lineTo(w * 0.3 + Math.sin(beamAngle) * 400 + 30, 0);
+      this.ctx.lineTo(w * 0.3 + 10, h);
       this.ctx.closePath();
       this.ctx.fill();
       this.ctx.restore();
 
-      // Distant Megascrapers (0.04x speed)
+      // Distant Megascrapers (0.04x speed) with Beacon Lights
       this.ctx.save();
-      this.ctx.fillStyle = 'rgba(5, 10, 24, 0.88)';
+      this.ctx.fillStyle = 'rgba(5, 10, 22, 0.85)';
       const p1 = (this.cameraX * 0.04) % 360;
       for (let bx = -p1 - 180; bx < w + 200; bx += 70) {
-        const bh = 130 + Math.sin(bx * 0.04) * 55;
+        const bh = 120 + Math.sin(bx * 0.04) * 50;
         this.ctx.fillRect(bx, h - bh - 80, 58, bh + 80);
+        // Aviation Beacon
         this.ctx.fillStyle = Math.sin(this.animTime * 4 + bx) > 0 ? '#ff2255' : 'rgba(255, 34, 85, 0.2)';
         this.ctx.fillRect(bx + 28, h - bh - 84, 2.5, 2.5);
-        this.ctx.fillStyle = 'rgba(5, 10, 24, 0.88)';
+        this.ctx.fillStyle = 'rgba(5, 10, 22, 0.85)';
       }
       this.ctx.restore();
 
-      // Midground Smart Towers with Neon Windows (0.09x speed)
+      // Midground Smart Towers (0.09x speed with neon windows & billboards)
       this.ctx.save();
       const p2 = (this.cameraX * 0.09) % 280;
       for (let bx = -p2 - 140; bx < w + 160; bx += 55) {
-        const bh = 85 + Math.cos(bx * 0.07) * 40;
-        this.ctx.fillStyle = 'rgba(9, 18, 38, 0.95)';
+        const bh = 80 + Math.cos(bx * 0.07) * 38;
+        this.ctx.fillStyle = 'rgba(10, 18, 36, 0.94)';
         this.ctx.fillRect(bx, h - bh - 40, 48, bh + 40);
+
+        // Lit Windows
         const winCols = ['#00f0ff', '#ff007f', '#ffaa00'];
         for (let wy = h - bh - 25; wy < h - 45; wy += 13) {
           for (let wx = bx + 6; wx < bx + 42; wx += 10) {
@@ -4799,1535 +4190,466 @@
       }
       this.ctx.restore();
 
-      // Flying Aero-Car Traffic
+      // High-Speed Flying Aero-Car / Drone Traffic
       this.ctx.save();
       const carX = ((this.animTime * 140 - this.cameraX * 0.12) % (w + 300)) - 100;
       const carY = h * 0.38 + Math.sin(this.animTime * 2) * 8;
       this.ctx.fillStyle = '#00f0ff';
-      this.ctx.fillRect(carX, carY, 15, 4);
+      this.ctx.fillRect(carX, carY, 14, 4);
       this.ctx.fillStyle = '#ffffff';
-      this.ctx.fillRect(carX + 12, carY + 1, 3, 2);
+      this.ctx.fillRect(carX + 11, carY + 1, 3, 2); // Headlight
       this.ctx.fillStyle = '#ff0055';
-      this.ctx.fillRect(carX, carY + 1, 2, 2);
+      this.ctx.fillRect(carX, carY + 1, 2, 2); // Taillight
       this.ctx.restore();
 
+      // Horizon Cyber Grid
       this.drawHorizonGrid(w, h, '#00f0ff');
-      this.drawThematicWatermark(w, h, 'CYBER METROPOLIS', 'NEON AWAKENING 01', '#00f0ff', '#ff007f');
+      // Watermark
+      this.drawThematicWatermark(w, h, 'SMART CITY', `SECTOR 0${levelId}`, '#00f0ff', '#ff007f');
     }
 
-    // -------------------------------------------------------------------------
-    // LEVEL 2: ROOFTOP LEAP (Neon Sunset & Sky-Bridges)
-    // -------------------------------------------------------------------------
-    drawLevel2Background(w, h, theme) {
+    // =========================================================================
+    // 2. NATURE PARALLAX BACKGROUND (Levels 5-8)
+    // =========================================================================
+    drawNatureBackground(w, h, theme, levelId) {
+      // Sky Gradient
       const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#090214');
-      grad.addColorStop(0.38, '#24083b');
-      grad.addColorStop(0.72, '#580e52');
-      grad.addColorStop(1, '#851944');
+      grad.addColorStop(0, '#010905');
+      grad.addColorStop(0.45, '#042114');
+      grad.addColorStop(0.85, '#0a3d24');
+      grad.addColorStop(1, '#115230');
       this.ctx.fillStyle = grad;
       this.ctx.fillRect(0, 0, w, h);
 
-      // Giant Setting Retrowave Sun with Horizontal Venetian Blinds
+      // Mystical Jade Crescent Moon
       this.ctx.save();
-      const sunX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
-      const sunY = h * 0.30;
-      const sunRad = 52;
+      const moonX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
+      const moonY = h * 0.18;
+      const moonRad = 42;
 
-      const sunAura = this.ctx.createRadialGradient(sunX, sunY, sunRad * 0.3, sunX, sunY, sunRad * 2);
-      sunAura.addColorStop(0, 'rgba(255, 0, 127, 0.35)');
-      sunAura.addColorStop(0.7, 'rgba(255, 170, 0, 0.15)');
-      sunAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = sunAura;
+      const moonGlow = this.ctx.createRadialGradient(moonX, moonY, moonRad * 0.4, moonX, moonY, moonRad * 1.9);
+      moonGlow.addColorStop(0, 'rgba(0, 255, 136, 0.28)');
+      moonGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      this.ctx.fillStyle = moonGlow;
       this.ctx.beginPath();
-      this.ctx.arc(sunX, sunY, sunRad * 2, 0, Math.PI * 2);
+      this.ctx.arc(moonX, moonY, moonRad * 1.9, 0, Math.PI * 2);
       this.ctx.fill();
 
-      const sunGrad = this.ctx.createLinearGradient(sunX, sunY - sunRad, sunX, sunY + sunRad);
-      sunGrad.addColorStop(0, '#ffee55');
-      sunGrad.addColorStop(0.5, '#ff007f');
-      sunGrad.addColorStop(1, '#880044');
-      this.ctx.fillStyle = sunGrad;
+      // Crescent Moon Shape
+      this.ctx.fillStyle = '#bafae0';
       this.ctx.beginPath();
-      this.ctx.arc(sunX, sunY, sunRad, 0, Math.PI * 2);
+      this.ctx.arc(moonX, moonY, moonRad, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.fillStyle = '#042114';
+      this.ctx.beginPath();
+      this.ctx.arc(moonX + 14, moonY - 6, moonRad * 0.9, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.restore();
+
+      // Distant Mountain Ranges (0.03x speed)
+      this.ctx.save();
+      this.ctx.fillStyle = 'rgba(3, 20, 12, 0.85)';
+      const p1 = (this.cameraX * 0.03) % 400;
+      this.ctx.beginPath();
+      this.ctx.moveTo(-100, h);
+      for (let mx = -p1 - 200; mx < w + 200; mx += 80) {
+        const peakY = h * 0.45 + Math.sin(mx * 0.03) * 55;
+        this.ctx.lineTo(mx, peakY);
+      }
+      this.ctx.lineTo(w + 100, h);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.restore();
+
+      // Ancient Tree Canopy Silhouettes & Giant Mushrooms (0.08x speed)
+      this.ctx.save();
+      const p2 = (this.cameraX * 0.08) % 320;
+      for (let tx = -p2 - 160; tx < w + 200; tx += 90) {
+        const th = 110 + Math.sin(tx * 0.05) * 45;
+        // Trunk
+        this.ctx.fillStyle = '#05190e';
+        this.ctx.fillRect(tx + 28, h - th - 30, 16, th + 30);
+        // Canopy dome
+        this.ctx.beginPath();
+        this.ctx.arc(tx + 36, h - th - 30, 48, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Glowing Bioluminescent Giant Mushroom Grove
+        const shroomX = tx + 12;
+        const shroomY = h - 60;
+        const shroomCol = tx % 180 < 90 ? '#00ff88' : '#e27aff';
+
+        this.ctx.fillStyle = '#0c2e1b';
+        this.ctx.fillRect(shroomX + 6, shroomY, 6, 30); // stem
+        this.ctx.shadowColor = shroomCol;
+        this.ctx.shadowBlur = 12;
+        this.ctx.fillStyle = shroomCol;
+        this.ctx.beginPath();
+        this.ctx.arc(shroomX + 9, shroomY, 15, Math.PI, 0); // cap
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.shadowBlur = 0;
+      }
+      this.ctx.restore();
+
+      // Floating Bioluminescent Fireflies & Spores (Animated organic flight)
+      this.ctx.save();
+      for (let i = 0; i < 32; i++) {
+        const fx = ((i * 123.7 - this.cameraX * 0.15 + this.animTime * 15) % (w + 60)) - 30;
+        const fy = (i * 73.1 + Math.sin(this.animTime * 2 + i * 1.2) * 24) % (h * 0.85);
+        const glowPulse = Math.sin(this.animTime * 4 + i) * 0.4 + 0.6;
+
+        this.ctx.shadowColor = '#00ff88';
+        this.ctx.shadowBlur = 8;
+        this.ctx.fillStyle = i % 2 === 0 ? '#00ff88' : '#7affc8';
+        this.ctx.globalAlpha = glowPulse * 0.75;
+        this.ctx.beginPath();
+        this.ctx.arc(fx, fy, (i % 3 === 0) ? 2.5 : 1.6, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+      this.ctx.restore();
+
+      this.drawThematicWatermark(w, h, 'NATURE', `ENCHANTED GROVE 0${levelId}`, '#00ff88', '#00e5ff');
+    }
+
+    // =========================================================================
+    // 3. GRAVEYARD PARALLAX BACKGROUND (Levels 9-12)
+    // =========================================================================
+    drawGraveyardBackground(w, h, theme, levelId) {
+      // Sky Gradient
+      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, '#0a0105');
+      grad.addColorStop(0.5, '#1e0413');
+      grad.addColorStop(0.85, '#380924');
+      grad.addColorStop(1, '#470e2f');
+      this.ctx.fillStyle = grad;
+      this.ctx.fillRect(0, 0, w, h);
+
+      // Colossal Eerie Blood Moon
+      this.ctx.save();
+      const moonX = w * 0.74 - (this.cameraX * 0.02) % (w * 0.5);
+      const moonY = h * 0.22;
+      const moonRad = 52;
+
+      // Blood Aura
+      const moonGlow = this.ctx.createRadialGradient(moonX, moonY, moonRad * 0.4, moonX, moonY, moonRad * 2.1);
+      moonGlow.addColorStop(0, 'rgba(255, 0, 85, 0.35)');
+      moonGlow.addColorStop(0.7, 'rgba(176, 38, 255, 0.15)');
+      moonGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      this.ctx.fillStyle = moonGlow;
+      this.ctx.beginPath();
+      this.ctx.arc(moonX, moonY, moonRad * 2.1, 0, Math.PI * 2);
       this.ctx.fill();
 
-      // Silhouette horizontal blind cuts across sun
-      this.ctx.fillStyle = '#24083b';
-      for (let s = 6; s < sunRad * 2; s += 9) {
-        if (s > sunRad * 0.6) {
-          const cutY = sunY - sunRad + s;
-          this.ctx.fillRect(sunX - sunRad - 5, cutY, (sunRad + 5) * 2, 2.8);
+      // Blood Moon Surface
+      const bodyGrad = this.ctx.createRadialGradient(moonX - 15, moonY - 15, 6, moonX, moonY, moonRad);
+      bodyGrad.addColorStop(0, '#ff6688');
+      bodyGrad.addColorStop(0.6, '#cc0044');
+      bodyGrad.addColorStop(1, '#440015');
+      this.ctx.fillStyle = bodyGrad;
+      this.ctx.beginPath();
+      this.ctx.arc(moonX, moonY, moonRad, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      // Lunar Maria Craters
+      this.ctx.fillStyle = 'rgba(40, 0, 15, 0.5)';
+      this.ctx.beginPath();
+      this.ctx.arc(moonX - 12, moonY - 10, 11, 0, Math.PI * 2);
+      this.ctx.arc(moonX + 16, moonY + 8, 14, 0, Math.PI * 2);
+      this.ctx.arc(moonX - 5, moonY + 20, 8, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.restore();
+
+      // Distant Gothic Cathedral & Castle Spires (0.03x speed)
+      this.ctx.save();
+      this.ctx.fillStyle = 'rgba(12, 2, 8, 0.9)';
+      const p1 = (this.cameraX * 0.03) % 360;
+      for (let cx = -p1 - 180; cx < w + 200; cx += 85) {
+        const ch = 100 + Math.sin(cx * 0.04) * 45;
+        // Spire Base
+        this.ctx.fillRect(cx, h - ch - 60, 45, ch + 60);
+        // Triangular Spire Tip
+        this.ctx.beginPath();
+        this.ctx.moveTo(cx, h - ch - 60);
+        this.ctx.lineTo(cx + 22, h - ch - 110);
+        this.ctx.lineTo(cx + 45, h - ch - 60);
+        this.ctx.closePath();
+        this.ctx.fill();
+      }
+      this.ctx.restore();
+
+      // Haunted Cemetery: Gnarled Dead Trees, Tombstones & Crypts (0.08x speed)
+      this.ctx.save();
+      const p2 = (this.cameraX * 0.08) % 300;
+      for (let tx = -p2 - 150; tx < w + 180; tx += 65) {
+        // Gnarled Dead Tree
+        if (tx % 130 < 65) {
+          const treeX = tx + 15;
+          const treeY = h - 65;
+          this.ctx.fillStyle = '#0a0106';
+          this.ctx.fillRect(treeX, treeY - 55, 10, 60);
+          // Crooked branches
+          this.ctx.strokeStyle = '#0a0106';
+          this.ctx.lineWidth = 3.5;
+          this.ctx.beginPath();
+          this.ctx.moveTo(treeX + 5, treeY - 35);
+          this.ctx.lineTo(treeX - 22, treeY - 60);
+          this.ctx.lineTo(treeX - 30, treeY - 78);
+          this.ctx.moveTo(treeX + 5, treeY - 45);
+          this.ctx.lineTo(treeX + 26, treeY - 70);
+          this.ctx.lineTo(treeX + 35, treeY - 85);
+          this.ctx.stroke();
+        } else {
+          // Weathered Tombstone & Cross
+          const stoneX = tx + 20;
+          const stoneY = h - 60;
+          this.ctx.fillStyle = '#14030d';
+          // Tombstone arch
+          this.ctx.fillRect(stoneX, stoneY - 26, 20, 26);
+          this.ctx.beginPath();
+          this.ctx.arc(stoneX + 10, stoneY - 26, 10, Math.PI, 0);
+          this.ctx.fill();
+          // Engraved Cross
+          this.ctx.fillStyle = '#b026ff';
+          this.ctx.globalAlpha = 0.45;
+          this.ctx.fillRect(stoneX + 8, stoneY - 26, 4, 16);
+          this.ctx.fillRect(stoneX + 4, stoneY - 20, 12, 4);
+          this.ctx.globalAlpha = 1;
         }
       }
       this.ctx.restore();
 
-      // Distant Spire Towers & Suspension Cables (0.03x)
+      // Flying Bats Across the Moon
       this.ctx.save();
-      this.ctx.fillStyle = 'rgba(24, 7, 36, 0.9)';
-      const p1 = (this.cameraX * 0.03) % 360;
-      for (let bx = -p1 - 180; bx < w + 200; bx += 90) {
-        const bh = 110 + Math.sin(bx * 0.05) * 45;
-        this.ctx.fillRect(bx, h - bh - 80, 42, bh + 80);
-        // Spire needle
-        this.ctx.fillRect(bx + 19, h - bh - 120, 4, 40);
-        this.ctx.fillStyle = Math.sin(this.animTime * 3 + bx) > 0 ? '#ffaa00' : 'rgba(255, 170, 0, 0.2)';
-        this.ctx.fillRect(bx + 19, h - bh - 123, 4, 4);
-        this.ctx.fillStyle = 'rgba(24, 7, 36, 0.9)';
+      const batTime = this.animTime * 90;
+      for (let b = 0; b < 4; b++) {
+        const bx = ((batTime * 1.2 + b * 110) % (w + 200)) - 100;
+        const by = h * 0.24 + Math.sin(this.animTime * 4 + b) * 18 - b * 14;
+        const wingFlap = Math.sin(this.animTime * 14 + b) * 5;
+        this.ctx.fillStyle = '#060004';
+        this.ctx.beginPath();
+        this.ctx.moveTo(bx, by);
+        this.ctx.lineTo(bx - 6, by - wingFlap);
+        this.ctx.lineTo(bx - 3, by + 2);
+        this.ctx.lineTo(bx, by);
+        this.ctx.lineTo(bx + 3, by + 2);
+        this.ctx.lineTo(bx + 6, by - wingFlap);
+        this.ctx.closePath();
+        this.ctx.fill();
       }
       this.ctx.restore();
 
-      // Elevated Sky-Train Monorail (0.07x)
+      // Floating Will-o'-the-Wisps (Ethereal Spirit Flames)
       this.ctx.save();
-      const railY = h * 0.58;
-      this.ctx.strokeStyle = 'rgba(255, 0, 127, 0.25)';
-      this.ctx.lineWidth = 3;
+      for (let wisp = 0; wisp < 16; wisp++) {
+        const wx = ((wisp * 149 - this.cameraX * 0.12 + Math.sin(this.animTime + wisp) * 20) % (w + 40)) - 20;
+        const wy = (wisp * 51 + Math.sin(this.animTime * 3 + wisp * 1.5) * 18) % (h * 0.8);
+        const wispCol = wisp % 2 === 0 ? '#b026ff' : '#00f0ff';
+
+        this.ctx.shadowColor = wispCol;
+        this.ctx.shadowBlur = 12;
+        this.ctx.fillStyle = wispCol;
+        this.ctx.globalAlpha = 0.65 + Math.sin(this.animTime * 5 + wisp) * 0.25;
+        this.ctx.beginPath();
+        this.ctx.arc(wx, wy, 3, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
+      this.ctx.restore();
+
+      this.drawThematicWatermark(w, h, 'GRAVEYARD', `SHADOW CEMETERY 0${levelId}`, '#b026ff', '#ff0055');
+    }
+
+    // =========================================================================
+    // 4. SPACE PARALLAX BACKGROUND (Levels 13-16)
+    // =========================================================================
+    drawSpaceBackground(w, h, theme, levelId) {
+      // Sky Gradient
+      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, '#010006');
+      grad.addColorStop(0.5, '#060116');
+      grad.addColorStop(1, '#0f0426');
+      this.ctx.fillStyle = grad;
+      this.ctx.fillRect(0, 0, w, h);
+
+      // Deep Cosmic Nebulae Clouds
+      this.ctx.save();
+      const nebX = w * 0.45 - (this.cameraX * 0.015) % (w * 0.6);
+      const nebY = h * 0.35;
+      const nebGrad = this.ctx.createRadialGradient(nebX, nebY, 30, nebX, nebY, 220);
+      nebGrad.addColorStop(0, 'rgba(176, 38, 255, 0.22)');
+      nebGrad.addColorStop(0.5, 'rgba(0, 212, 255, 0.12)');
+      nebGrad.addColorStop(0.8, 'rgba(255, 0, 127, 0.06)');
+      nebGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      this.ctx.fillStyle = nebGrad;
       this.ctx.beginPath();
-      this.ctx.moveTo(0, railY);
-      this.ctx.lineTo(w, railY);
+      this.ctx.arc(nebX, nebY, 220, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.restore();
+
+      // Starfield (70+ Multicolored Twinkling Stars)
+      this.ctx.save();
+      for (let s = 0; s < 65; s++) {
+        const sx = ((s * 153.7 + this.cameraX * 0.01) % (w + 40)) - 20;
+        const sy = (s * 87.3) % h;
+        const flicker = Math.sin(this.animTime * 3 + s) * 0.4 + 0.6;
+        const starColors = ['#ffffff', '#00d4ff', '#e27aff', '#ffea70'];
+        this.ctx.fillStyle = starColors[s % starColors.length];
+        this.ctx.globalAlpha = flicker * 0.55;
+        this.ctx.fillRect(sx, sy, (s % 5 === 0) ? 2.5 : 1.2, (s % 5 === 0) ? 2.5 : 1.2);
+      }
+      this.ctx.restore();
+
+      // Colossal Ringed Gas Giant Planet (Saturn-Style)
+      this.ctx.save();
+      const planX = w * 0.76 - (this.cameraX * 0.02) % (w * 0.5);
+      const planY = h * 0.22;
+      const planRad = 56;
+
+      // Atmospheric Glow
+      const planAura = this.ctx.createRadialGradient(planX, planY, planRad * 0.6, planX, planY, planRad * 1.8);
+      planAura.addColorStop(0, 'rgba(0, 212, 255, 0.3)');
+      planAura.addColorStop(0.7, 'rgba(176, 38, 255, 0.15)');
+      planAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      this.ctx.fillStyle = planAura;
+      this.ctx.beginPath();
+      this.ctx.arc(planX, planY, planRad * 1.8, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      // Planet Sphere with Atmospheric Cloud Bands
+      const planetGrad = this.ctx.createLinearGradient(planX - planRad, planY - planRad, planX + planRad, planY + planRad);
+      planetGrad.addColorStop(0, '#00d4ff');
+      planetGrad.addColorStop(0.35, '#1e295d');
+      planetGrad.addColorStop(0.7, '#6b21a8');
+      planetGrad.addColorStop(1, '#050212');
+      this.ctx.fillStyle = planetGrad;
+      this.ctx.beginPath();
+      this.ctx.arc(planX, planY, planRad, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      // Slicing Planetary Rings (Front & Back ellipse)
+      this.ctx.strokeStyle = 'rgba(0, 212, 255, 0.65)';
+      this.ctx.lineWidth = 6;
+      this.ctx.beginPath();
+      this.ctx.ellipse(planX, planY, planRad * 2.1, planRad * 0.45, -Math.PI / 7, 0, Math.PI * 2);
       this.ctx.stroke();
 
-      const trainX = ((this.animTime * 170 - this.cameraX * 0.08) % (w + 400)) - 200;
-      this.ctx.fillStyle = '#ff007f';
-      this.ctx.fillRect(trainX, railY - 10, 85, 9);
-      this.ctx.fillStyle = '#ffffff';
-      for (let tw = trainX + 8; tw < trainX + 75; tw += 12) {
-        this.ctx.fillRect(tw, railY - 8, 7, 4);
+      this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      this.ctx.lineWidth = 1.5;
+      this.ctx.stroke();
+      this.ctx.restore();
+
+      // Tumbling Asteroids Drifting in Orbit (0.05x speed)
+      this.ctx.save();
+      const astP = (this.cameraX * 0.05) % 350;
+      for (let a = 0; a < 6; a++) {
+        const ax = ((a * 160 - astP) % (w + 200)) - 80;
+        const ay = h * 0.45 + (a * 28) % 80;
+        const aRot = this.animTime * 0.6 + a;
+        this.ctx.save();
+        this.ctx.translate(ax, ay);
+        this.ctx.rotate(aRot);
+        this.ctx.fillStyle = '#1c1b2b';
+        this.ctx.strokeStyle = '#38364f';
+        this.ctx.lineWidth = 1;
+        this.ctx.beginPath();
+        this.ctx.moveTo(-10, -5);
+        this.ctx.lineTo(0, -12);
+        this.ctx.lineTo(12, -4);
+        this.ctx.lineTo(8, 10);
+        this.ctx.lineTo(-7, 8);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+        this.ctx.restore();
       }
       this.ctx.restore();
 
-      // Ambient Falling Neon Rain Streaks
+      // Shooting Meteor / Star Streak
       this.ctx.save();
-      this.ctx.strokeStyle = 'rgba(255, 0, 127, 0.28)';
-      this.ctx.lineWidth = 1.2;
-      for (let r = 0; r < 35; r++) {
-        const rx = ((r * 87.3 + this.animTime * 90 - this.cameraX * 0.1) % (w + 60)) - 30;
-        const ry = (r * 53.7 + this.animTime * 280) % h;
+      const meteorCycle = (this.animTime * 180) % (w * 2);
+      if (meteorCycle < w + 200) {
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        this.ctx.lineWidth = 1.8;
         this.ctx.beginPath();
-        this.ctx.moveTo(rx, ry);
-        this.ctx.lineTo(rx - 4, ry + 16);
+        this.ctx.moveTo(meteorCycle, h * 0.15 + meteorCycle * 0.2);
+        this.ctx.lineTo(meteorCycle - 60, h * 0.15 + meteorCycle * 0.2 - 25);
         this.ctx.stroke();
       }
       this.ctx.restore();
 
-      this.drawHorizonGrid(w, h, '#ff007f');
-      this.drawThematicWatermark(w, h, 'ROOFTOP SKYLINE', 'ROOFTOP LEAP 02', '#ff007f', '#ffaa00');
+      this.drawThematicWatermark(w, h, 'SPACE', `COSMIC VOID 0${levelId}`, '#00d4ff', '#b026ff');
     }
 
-    // -------------------------------------------------------------------------
-    // LEVEL 3: GRID ABYSS (Sub-City Digital Chasm)
-    // -------------------------------------------------------------------------
-    drawLevel3Background(w, h, theme) {
+    // =========================================================================
+    // 5. ANCIENT RUINS & CELESTIAL NEXUS PARALLAX BACKGROUND (Levels 17-20)
+    // =========================================================================
+    drawRuinsBackground(w, h, theme, levelId) {
+      // Sky Gradient
       const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#010708');
-      grad.addColorStop(0.48, '#02181c');
-      grad.addColorStop(1, '#053338');
+      grad.addColorStop(0, '#06010e');
+      grad.addColorStop(0.45, '#170626');
+      grad.addColorStop(0.85, '#2e0f40');
+      grad.addColorStop(1, '#3b1c2b');
       this.ctx.fillStyle = grad;
       this.ctx.fillRect(0, 0, w, h);
 
-      // Central Hexagonal Sub-City Power Core
+      // Rotating Celestial Chrono-Rings & Core
       this.ctx.save();
-      const coreX = w * 0.65 - (this.cameraX * 0.02) % (w * 0.5);
-      const coreY = h * 0.24;
+      const coreX = w * 0.75 - (this.cameraX * 0.02) % (w * 0.5);
+      const coreY = h * 0.22;
       const coreRad = 46;
 
-      const aura = this.ctx.createRadialGradient(coreX, coreY, coreRad * 0.2, coreX, coreY, coreRad * 2);
-      aura.addColorStop(0, 'rgba(0, 255, 204, 0.32)');
-      aura.addColorStop(0.7, 'rgba(0, 180, 255, 0.12)');
+      const aura = this.ctx.createRadialGradient(coreX, coreY, coreRad * 0.3, coreX, coreY, coreRad * 2);
+      aura.addColorStop(0, 'rgba(255, 170, 0, 0.3)');
+      aura.addColorStop(0.7, 'rgba(176, 38, 255, 0.15)');
       aura.addColorStop(1, 'rgba(0, 0, 0, 0)');
       this.ctx.fillStyle = aura;
       this.ctx.beginPath();
       this.ctx.arc(coreX, coreY, coreRad * 2, 0, Math.PI * 2);
       this.ctx.fill();
 
-      this.ctx.strokeStyle = '#00ffcc';
-      this.ctx.lineWidth = 2.2;
-      this.ctx.shadowColor = '#00ffcc';
-      this.ctx.shadowBlur = 14;
+      // Golden Chrono Rings rotating in 3D
+      const rot = this.animTime * 1.5;
+      this.ctx.strokeStyle = '#ffaa00';
+      this.ctx.lineWidth = 2.5;
       this.ctx.beginPath();
-      for (let a = 0; a < 6; a++) {
-        const ang = (Math.PI / 3) * a + this.animTime * 0.6;
-        const hx = coreX + Math.cos(ang) * coreRad;
-        const hy = coreY + Math.sin(ang) * coreRad;
-        if (a === 0) this.ctx.moveTo(hx, hy);
-        else this.ctx.lineTo(hx, hy);
-      }
-      this.ctx.closePath();
-      this.ctx.stroke();
-      this.ctx.shadowBlur = 0;
-      this.ctx.restore();
-
-      // Cascading Matrix Digital Code Rain in Chasm
-      this.ctx.save();
-      this.ctx.fillStyle = '#00ffcc';
-      this.ctx.font = '10px monospace';
-      for (let c = 0; c < 30; c++) {
-        const colX = ((c * 68.3 - this.cameraX * 0.05) % (w + 40)) - 20;
-        const streamHead = (this.animTime * 120 + c * 43) % (h + 120) - 60;
-        for (let j = 0; j < 6; j++) {
-          const charY = streamHead - j * 12;
-          if (charY > 0 && charY < h) {
-            this.ctx.globalAlpha = Math.max(0, 0.85 - j * 0.15);
-            this.ctx.fillText((c + j) % 2 === 0 ? '0' : '1', colX, charY);
-          }
-        }
-      }
-      this.ctx.restore();
-
-      // Giant Subterranean Server Monoliths (0.08x)
-      this.ctx.save();
-      const p2 = (this.cameraX * 0.08) % 320;
-      for (let mx = -p2 - 160; mx < w + 200; mx += 75) {
-        const mh = 140 + Math.sin(mx * 0.04) * 60;
-        this.ctx.fillStyle = '#051618';
-        this.ctx.fillRect(mx, h - mh - 40, 52, mh + 40);
-        // Vertical status bus
-        for (let sy = h - mh - 20; sy < h - 45; sy += 10) {
-          const isLit = (mx + sy) % 3 !== 0;
-          this.ctx.fillStyle = isLit ? '#00ffcc' : '#006655';
-          this.ctx.globalAlpha = isLit ? (0.4 + Math.sin(this.animTime * 3 + sy) * 0.2) : 0.2;
-          this.ctx.fillRect(mx + 8, sy, 5, 4);
-          this.ctx.fillRect(mx + 18, sy, 5, 4);
-        }
-      }
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#00ffcc');
-      this.drawThematicWatermark(w, h, 'SUB-CITY CHASM', 'GRID ABYSS 03', '#00ffcc', '#0099ff');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 4: FIRST CONTACT (Stratospheric Orbital Skyport & Space Elevator)
-    // -------------------------------------------------------------------------
-    drawLevel4Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#01020b');
-      grad.addColorStop(0.42, '#080a26');
-      grad.addColorStop(0.8, '#16134a');
-      grad.addColorStop(1, '#2c1966');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Starfield
-      this.ctx.save();
-      for (let s = 0; s < 50; s++) {
-        const sx = ((s * 149.3 + this.cameraX * 0.01) % (w + 40)) - 20;
-        const sy = (s * 83.1) % (h * 0.65);
-        this.ctx.fillStyle = s % 2 === 0 ? '#38bdf8' : '#ffffff';
-        this.ctx.globalAlpha = 0.35 + Math.sin(this.animTime * 2.5 + s) * 0.35;
-        this.ctx.fillRect(sx, sy, 1.8, 1.8);
-      }
-      this.ctx.restore();
-
-      // Crescent Earth / Blue Planet Rim on Stratosphere Horizon
-      this.ctx.save();
-      const orbX = w * 0.76 - (this.cameraX * 0.015) % (w * 0.5);
-      const orbY = h * 0.22;
-      const orbRad = 48;
-
-      const orbAura = this.ctx.createRadialGradient(orbX, orbY, orbRad * 0.4, orbX, orbY, orbRad * 1.8);
-      orbAura.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
-      orbAura.addColorStop(0.7, 'rgba(168, 85, 247, 0.12)');
-      orbAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = orbAura;
-      this.ctx.beginPath();
-      this.ctx.arc(orbX, orbY, orbRad * 1.8, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      this.ctx.fillStyle = '#1e3a8a';
-      this.ctx.beginPath();
-      this.ctx.arc(orbX, orbY, orbRad, 0, Math.PI * 2);
-      this.ctx.fill();
-      // Crescent mask
-      this.ctx.fillStyle = '#080a26';
-      this.ctx.beginPath();
-      this.ctx.arc(orbX + 16, orbY - 8, orbRad * 0.95, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.restore();
-
-      // Colossal Space Elevator Tether (0.02x)
-      this.ctx.save();
-      const tetherX = w * 0.32 - (this.cameraX * 0.02) % (w * 0.6);
-      this.ctx.strokeStyle = '#38bdf8';
-      this.ctx.lineWidth = 3.5;
-      this.ctx.globalAlpha = 0.55;
-      this.ctx.beginPath();
-      this.ctx.moveTo(tetherX, 0);
-      this.ctx.lineTo(tetherX, h);
+      this.ctx.ellipse(coreX, coreY, coreRad * 1.6, coreRad * 0.5, rot * 0.6, 0, Math.PI * 2);
       this.ctx.stroke();
 
-      // Ascending Freight Pod
-      const podY = ((this.animTime * 45) % (h + 80)) - 40;
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.fillRect(tetherX - 6, h - podY, 12, 16);
-      this.ctx.fillStyle = '#38bdf8';
-      this.ctx.fillRect(tetherX - 4, h - podY + 3, 8, 4);
-      this.ctx.restore();
-
-      // Launch Gantry Towers & Rotating Radar Dish (0.06x)
-      this.ctx.save();
-      const p2 = (this.cameraX * 0.06) % 360;
-      for (let gx = -p2 - 180; gx < w + 200; gx += 110) {
-        const gh = 95 + Math.sin(gx * 0.04) * 35;
-        this.ctx.fillStyle = '#0f1230';
-        this.ctx.fillRect(gx, h - gh - 45, 36, gh + 45);
-        // Radar dish ellipse
-        const rot = this.animTime * 1.8 + gx;
-        this.ctx.strokeStyle = '#38bdf8';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.ellipse(gx + 18, h - gh - 55, 16, 6, Math.sin(rot) * 0.4, 0, Math.PI * 2);
-        this.ctx.stroke();
-      }
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#38bdf8');
-      this.drawThematicWatermark(w, h, 'ORBITAL SKYPORT', 'FIRST CONTACT 04', '#38bdf8', '#a855f7');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 5: SPORE CAVERNS (Bioluminescent Fungal Caverns)
-    // -------------------------------------------------------------------------
-    drawLevel5Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#010a05');
-      grad.addColorStop(0.45, '#042114');
-      grad.addColorStop(0.85, '#093a22');
-      grad.addColorStop(1, '#0f5232');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // The Mother Spore Cluster Orb
-      this.ctx.save();
-      const sporeX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
-      const sporeY = h * 0.20;
-      const sRad = 44;
-      const sPulse = Math.sin(this.animTime * 2.2) * 4;
-
-      const sGlow = this.ctx.createRadialGradient(sporeX, sporeY, (sRad + sPulse) * 0.3, sporeX, sporeY, (sRad + sPulse) * 1.9);
-      sGlow.addColorStop(0, 'rgba(0, 255, 136, 0.32)');
-      sGlow.addColorStop(0.6, 'rgba(168, 85, 247, 0.12)');
-      sGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = sGlow;
-      this.ctx.beginPath();
-      this.ctx.arc(sporeX, sporeY, (sRad + sPulse) * 1.9, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      this.ctx.fillStyle = '#062917';
-      this.ctx.beginPath();
-      this.ctx.arc(sporeX, sporeY, sRad + sPulse, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.restore();
-
-      // Hanging Stalactites from Cavern Roof (0.03x)
-      this.ctx.save();
-      this.ctx.fillStyle = '#04170e';
-      const p1 = (this.cameraX * 0.03) % 240;
-      for (let sx = -p1 - 100; sx < w + 150; sx += 60) {
-        const sh = 40 + Math.sin(sx * 0.06) * 25;
-        this.ctx.beginPath();
-        this.ctx.moveTo(sx, 0);
-        this.ctx.lineTo(sx + 15, sh);
-        this.ctx.lineTo(sx + 30, 0);
-        this.ctx.closePath();
-        this.ctx.fill();
-      }
-      this.ctx.restore();
-
-      // Giant Bioluminescent Mushrooms (0.08x)
-      this.ctx.save();
-      const p2 = (this.cameraX * 0.08) % 300;
-      for (let mx = -p2 - 150; mx < w + 200; mx += 85) {
-        const mh = 110 + Math.sin(mx * 0.05) * 45;
-        const stemX = mx + 24;
-        const capY = h - mh - 20;
-        this.ctx.fillStyle = '#061d11';
-        this.ctx.fillRect(stemX, capY, 14, mh + 20);
-
-        const capCol = mx % 170 < 85 ? '#00ff88' : '#c084fc';
-        this.ctx.shadowColor = capCol;
-        this.ctx.shadowBlur = 14;
-        this.ctx.fillStyle = capCol;
-        this.ctx.beginPath();
-        this.ctx.arc(stemX + 7, capY, 24, Math.PI, 0);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.shadowBlur = 0;
-      }
-      this.ctx.restore();
-
-      // Floating Glowing Spore Particles
-      this.ctx.save();
-      for (let s = 0; s < 35; s++) {
-        const sx = ((s * 117.3 - this.cameraX * 0.12 + this.animTime * 12) % (w + 40)) - 20;
-        const sy = (s * 71.9 + Math.sin(this.animTime * 2 + s) * 18) % (h * 0.85);
-        this.ctx.fillStyle = s % 2 === 0 ? '#00ff88' : '#7affc8';
-        this.ctx.globalAlpha = 0.4 + Math.sin(this.animTime * 3 + s) * 0.4;
-        this.ctx.beginPath();
-        this.ctx.arc(sx, sy, s % 3 === 0 ? 2.5 : 1.6, 0, Math.PI * 2);
-        this.ctx.fill();
-      }
-      this.ctx.restore();
-
-      this.drawThematicWatermark(w, h, 'SPORE CAVERNS', 'SPORE CAVERNS 05', '#00ff88', '#2dd4bf');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 6: OVERGROWTH RUN (Sun-Dappled Ancient Primeval Canopy)
-    // -------------------------------------------------------------------------
-    drawLevel6Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#020f06');
-      grad.addColorStop(0.38, '#0a2e14');
-      grad.addColorStop(0.75, '#175726');
-      grad.addColorStop(1, '#3a6b25');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Golden Morning Sunburst through Canopy
-      this.ctx.save();
-      const sunX = w * 0.68 - (this.cameraX * 0.02) % (w * 0.5);
-      const sunY = h * 0.18;
-      const sunRad = 46;
-
-      const sAura = this.ctx.createRadialGradient(sunX, sunY, sunRad * 0.2, sunX, sunY, sunRad * 2.2);
-      sAura.addColorStop(0, 'rgba(255, 230, 100, 0.45)');
-      sAura.addColorStop(0.6, 'rgba(163, 230, 53, 0.2)');
-      sAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = sAura;
-      this.ctx.beginPath();
-      this.ctx.arc(sunX, sunY, sunRad * 2.2, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Volumetric God-Rays
-      this.ctx.save();
-      for (let r = -2; r <= 3; r++) {
-        const rayAngle = 0.45 + r * 0.16;
-        const rayGrad = this.ctx.createLinearGradient(sunX, sunY, sunX + Math.cos(rayAngle) * 500, sunY + Math.sin(rayAngle) * 500);
-        rayGrad.addColorStop(0, 'rgba(255, 240, 150, 0.25)');
-        rayGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        this.ctx.fillStyle = rayGrad;
-        this.ctx.beginPath();
-        this.ctx.moveTo(sunX - 10, sunY - 10);
-        this.ctx.lineTo(sunX + Math.cos(rayAngle - 0.05) * 600, sunY + Math.sin(rayAngle - 0.05) * 600);
-        this.ctx.lineTo(sunX + Math.cos(rayAngle + 0.05) * 600, sunY + Math.sin(rayAngle + 0.05) * 600);
-        this.ctx.closePath();
-        this.ctx.fill();
-      }
-      this.ctx.restore();
-      this.ctx.restore();
-
-      // Colossal Ancient Twisted Banyan Trunks (0.08x)
-      this.ctx.save();
-      const p2 = (this.cameraX * 0.08) % 340;
-      for (let tx = -p2 - 160; tx < w + 200; tx += 95) {
-        const th = 130 + Math.sin(tx * 0.05) * 50;
-        this.ctx.fillStyle = '#061d0d';
-        this.ctx.fillRect(tx + 25, h - th - 30, 24, th + 30);
-        // Canopy umbrella
-        this.ctx.beginPath();
-        this.ctx.arc(tx + 37, h - th - 30, 52, 0, Math.PI * 2);
-        this.ctx.fill();
-      }
-      this.ctx.restore();
-
-      // Drifting Golden Pollen Particles
-      this.ctx.save();
-      for (let p = 0; p < 30; p++) {
-        const px = ((p * 129.7 - this.cameraX * 0.1 + this.animTime * 20) % (w + 40)) - 20;
-        const py = (p * 67.3 + Math.sin(this.animTime + p) * 16) % h;
-        this.ctx.fillStyle = '#fde047';
-        this.ctx.globalAlpha = 0.45 + Math.sin(this.animTime * 3 + p) * 0.35;
-        this.ctx.fillRect(px, py, 2, 2);
-      }
-      this.ctx.restore();
-
-      this.drawThematicWatermark(w, h, 'ANCIENT CANOPY', 'OVERGROWTH RUN 06', '#a3e635', '#00ff88');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 7: SWARM CANOPY (Twilight Firefly Swamp & Twin Moons)
-    // -------------------------------------------------------------------------
-    drawLevel7Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#05020f');
-      grad.addColorStop(0.42, '#120d2b');
-      grad.addColorStop(0.78, '#17282c');
-      grad.addColorStop(1, '#153a29');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Mystical Twin Jade Moons
-      this.ctx.save();
-      const m1X = w * 0.70 - (this.cameraX * 0.02) % (w * 0.5);
-      const m1Y = h * 0.19;
-      const m1Rad = 36;
-      const m2X = m1X + 48;
-      const m2Y = m1Y + 22;
-      const m2Rad = 20;
-
-      this.ctx.fillStyle = 'rgba(45, 212, 191, 0.22)';
-      this.ctx.beginPath();
-      this.ctx.arc(m1X, m1Y, m1Rad * 1.8, 0, Math.PI * 2);
-      this.ctx.arc(m2X, m2Y, m2Rad * 1.8, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      this.ctx.fillStyle = '#99f6e4';
-      this.ctx.beginPath();
-      this.ctx.arc(m1X, m1Y, m1Rad, 0, Math.PI * 2);
-      this.ctx.arc(m2X, m2Y, m2Rad, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.restore();
-
-      // Weeping Willow Silhouettes with Dangling Spanish Moss (0.07x)
-      this.ctx.save();
-      const p1 = (this.cameraX * 0.07) % 300;
-      for (let wx = -p1 - 150; wx < w + 200; wx += 80) {
-        const wh = 100 + Math.sin(wx * 0.06) * 35;
-        this.ctx.fillStyle = '#081716';
-        this.ctx.fillRect(wx + 22, h - wh - 30, 16, wh + 30);
-        // Weeping boughs
-        this.ctx.strokeStyle = '#081716';
-        this.ctx.lineWidth = 3;
-        for (let b = -2; b <= 2; b++) {
-          this.ctx.beginPath();
-          this.ctx.moveTo(wx + 30, h - wh - 25);
-          this.ctx.quadraticCurveTo(wx + 30 + b * 20, h - wh + 10, wx + 30 + b * 26, h - wh + 45);
-          this.ctx.stroke();
-        }
-      }
-      this.ctx.restore();
-
-      // Swarms of Dancing Fireflies in Organic Wave Formations
-      this.ctx.save();
-      for (let f = 0; f < 42; f++) {
-        const fx = ((f * 97.3 - this.cameraX * 0.12 + Math.sin(this.animTime * 1.8 + f) * 35) % (w + 40)) - 20;
-        const fy = (f * 51.7 + Math.sin(this.animTime * 2.8 + f * 1.3) * 24) % (h * 0.82);
-        const glowPulse = Math.sin(this.animTime * 4 + f) * 0.4 + 0.6;
-        this.ctx.shadowColor = '#2dd4bf';
-        this.ctx.shadowBlur = 10;
-        this.ctx.fillStyle = f % 2 === 0 ? '#2dd4bf' : '#a7f3d0';
-        this.ctx.globalAlpha = glowPulse * 0.8;
-        this.ctx.beginPath();
-        this.ctx.arc(fx, fy, (f % 3 === 0) ? 2.6 : 1.8, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.shadowBlur = 0;
-      }
-      this.ctx.restore();
-
-      this.drawThematicWatermark(w, h, 'TWILIGHT SWAMP', 'SWARM CANOPY 07', '#2dd4bf', '#a855f7');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 8: SHIFTING MOSS (Sacred Crystal Cascades & Waterfalls)
-    // -------------------------------------------------------------------------
-    drawLevel8Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#010f14');
-      grad.addColorStop(0.42, '#042c38');
-      grad.addColorStop(0.82, '#0a5563');
-      grad.addColorStop(1, '#117b7a');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Colossal Floating Mana Crystal
-      this.ctx.save();
-      const cryX = w * 0.74 - (this.cameraX * 0.02) % (w * 0.5);
-      const cryY = h * 0.22;
-      const cryW = 28;
-      const cryH = 64;
-
-      const cGlow = this.ctx.createRadialGradient(cryX, cryY, 10, cryX, cryY, 90);
-      cGlow.addColorStop(0, 'rgba(52, 211, 153, 0.4)');
-      cGlow.addColorStop(0.7, 'rgba(0, 240, 255, 0.15)');
-      cGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = cGlow;
-      this.ctx.beginPath();
-      this.ctx.arc(cryX, cryY, 90, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Crystalline Octahedron
-      this.ctx.fillStyle = '#6ee7b7';
-      this.ctx.beginPath();
-      this.ctx.moveTo(cryX, cryY - cryH / 2);
-      this.ctx.lineTo(cryX + cryW / 2, cryY);
-      this.ctx.lineTo(cryX, cryY + cryH / 2);
-      this.ctx.lineTo(cryX - cryW / 2, cryY);
-      this.ctx.closePath();
-      this.ctx.fill();
-
-      this.ctx.fillStyle = '#a7f3d0';
-      this.ctx.beginPath();
-      this.ctx.moveTo(cryX, cryY - cryH / 2);
-      this.ctx.lineTo(cryX + cryW / 2, cryY);
-      this.ctx.lineTo(cryX, cryY + cryH / 2);
-      this.ctx.closePath();
-      this.ctx.fill();
-      this.ctx.restore();
-
-      // Distant Cliffs with Cascading Glowing Waterfalls (0.04x)
-      this.ctx.save();
-      const p1 = (this.cameraX * 0.04) % 360;
-      for (let cx = -p1 - 180; cx < w + 200; cx += 100) {
-        const ch = 120 + Math.sin(cx * 0.04) * 50;
-        this.ctx.fillStyle = '#062024';
-        this.ctx.fillRect(cx, h - ch - 40, 65, ch + 40);
-        // Cascading aqua waterfall
-        const wfX = cx + 24;
-        this.ctx.fillStyle = 'rgba(52, 211, 153, 0.65)';
-        this.ctx.fillRect(wfX, h - ch - 35, 16, ch + 35);
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillRect(wfX + 4, h - ch - 35, 3, ch + 35);
-      }
-      this.ctx.restore();
-
-      // Floating Moss Islets & Crystal Prisms (0.08x)
-      this.ctx.save();
-      for (let i = 0; i < 4; i++) {
-        const ix = ((i * 260 - this.cameraX * 0.08) % (w + 200)) - 80;
-        const iy = h * 0.44 + Math.sin(this.animTime * 1.5 + i) * 14;
-        this.ctx.fillStyle = '#0a2e2b';
-        this.ctx.beginPath();
-        this.ctx.ellipse(ix, iy, 42, 14, 0, 0, Math.PI * 2);
-        this.ctx.fill();
-        // Dangling vines
-        this.ctx.strokeStyle = '#34d399';
-        this.ctx.lineWidth = 1.4;
-        for (let v = -20; v <= 20; v += 10) {
-          this.ctx.beginPath();
-          this.ctx.moveTo(ix + v, iy + 8);
-          this.ctx.lineTo(ix + v + Math.sin(this.animTime * 2 + v) * 3, iy + 24 + (v % 8));
-          this.ctx.stroke();
-        }
-      }
-      this.ctx.restore();
-
-      this.drawThematicWatermark(w, h, 'ENCHANTED FALLS', 'SHIFTING MOSS 08', '#34d399', '#00f0ff');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 9: PISTON CORE (Volcanic Foundry & Hydraulic Machinery)
-    // -------------------------------------------------------------------------
-    drawLevel9Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#0a0101');
-      grad.addColorStop(0.45, '#240404');
-      grad.addColorStop(0.8, '#520b06');
-      grad.addColorStop(1, '#851508');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Blazing Smelting Furnace Eye / Core Geode
-      this.ctx.save();
-      const fX = w * 0.74 - (this.cameraX * 0.02) % (w * 0.5);
-      const fY = h * 0.22;
-      const fRad = 48;
-
-      const fGlow = this.ctx.createRadialGradient(fX, fY, fRad * 0.3, fX, fY, fRad * 2);
-      fGlow.addColorStop(0, 'rgba(255, 59, 48, 0.45)');
-      fGlow.addColorStop(0.7, 'rgba(255, 170, 0, 0.2)');
-      fGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = fGlow;
-      this.ctx.beginPath();
-      this.ctx.arc(fX, fY, fRad * 2, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      const fGrad = this.ctx.createRadialGradient(fX, fY, 4, fX, fY, fRad);
-      fGrad.addColorStop(0, '#ffffff');
-      fGrad.addColorStop(0.4, '#ffaa00');
-      fGrad.addColorStop(1, '#b30000');
-      this.ctx.fillStyle = fGrad;
-      this.ctx.beginPath();
-      this.ctx.arc(fX, fY, fRad, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.restore();
-
-      // Heavy Hydraulic Pistons (0.07x)
-      this.ctx.save();
-      const p1 = (this.cameraX * 0.07) % 280;
-      for (let px = -p1 - 140; px < w + 200; px += 75) {
-        const pump = (Math.sin(this.animTime * 4 + px * 0.05) + 1) * 0.5; // 0..1
-        const shaftH = 60 + pump * 35;
-        this.ctx.fillStyle = '#1c0808';
-        this.ctx.fillRect(px + 14, 0, 24, h - 140);
-        // Moving piston head
-        this.ctx.fillStyle = '#ff3b30';
-        this.ctx.fillRect(px + 8, h - 160 + pump * 30, 36, 16);
-        // Steam blast puff
-        if (pump > 0.85) {
-          this.ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-          this.ctx.beginPath();
-          this.ctx.arc(px + 26, h - 160 + pump * 30 + 20, 14, 0, Math.PI * 2);
-          this.ctx.fill();
-        }
-      }
-      this.ctx.restore();
-
-      // Flowing Molten Lava River on Horizon
-      this.ctx.save();
-      this.ctx.fillStyle = '#ff3b30';
-      this.ctx.globalAlpha = 0.4;
-      this.ctx.fillRect(0, h - 35, w, 35);
-      this.ctx.fillStyle = '#ffee55';
-      for (let lx = 0; lx < w; lx += 45) {
-        this.ctx.fillRect(lx + Math.sin(this.animTime * 3 + lx) * 8, h - 30, 24, 6);
-      }
-      this.ctx.restore();
-
-      // Floating Hot Embers & Sparks
-      this.ctx.save();
-      for (let e = 0; e < 35; e++) {
-        const ex = ((e * 103.7 - this.cameraX * 0.12 + Math.sin(this.animTime + e) * 20) % (w + 40)) - 20;
-        const ey = (e * 61.3 - this.animTime * 70) % h;
-        const actY = ey < 0 ? ey + h : ey;
-        this.ctx.fillStyle = e % 2 === 0 ? '#ffaa00' : '#ff3b30';
-        this.ctx.globalAlpha = 0.5 + Math.sin(this.animTime * 4 + e) * 0.4;
-        this.ctx.fillRect(ex, actY, 2.5, 2.5);
-      }
-      this.ctx.restore();
-
-      this.drawThematicWatermark(w, h, 'VOLCANIC FOUNDRY', 'PISTON CORE 09', '#ff3b30', '#ffaa00');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 10: STEAM MAZE (Steampunk Pressure Labyrinth & Geothermal Brass)
-    // -------------------------------------------------------------------------
-    drawLevel10Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#090402');
-      grad.addColorStop(0.42, '#211206');
-      grad.addColorStop(0.8, '#42250d');
-      grad.addColorStop(1, '#693c14');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Giant Geothermal Brass Boiler & Circular Pressure Dial
-      this.ctx.save();
-      const bX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
-      const bY = h * 0.24;
-      const bRad = 48;
-
-      this.ctx.fillStyle = '#261508';
-      this.ctx.beginPath();
-      this.ctx.arc(bX, bY, bRad, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.strokeStyle = '#f59e0b';
-      this.ctx.lineWidth = 3;
-      this.ctx.stroke();
-
-      // Pressure needle spinning
-      const needleAng = Math.sin(this.animTime * 2.5) * 1.2 - Math.PI / 2;
-      this.ctx.strokeStyle = '#ff3b30';
-      this.ctx.lineWidth = 2.2;
-      this.ctx.beginPath();
-      this.ctx.moveTo(bX, bY);
-      this.ctx.lineTo(bX + Math.cos(needleAng) * (bRad - 8), bY + Math.sin(needleAng) * (bRad - 8));
-      this.ctx.stroke();
-      this.ctx.restore();
-
-      // Interconnected Brass & Copper Steam Conduits (0.04x)
-      this.ctx.save();
-      this.ctx.strokeStyle = '#784318';
-      this.ctx.lineWidth = 7;
-      for (let p = 0; p < 4; p++) {
-        const py = h * 0.35 + p * 45;
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, py);
-        this.ctx.lineTo(w, py);
-        this.ctx.stroke();
-      }
-      this.ctx.restore();
-
-      // Giant Rotating Brass Ventilation Fans (0.08x)
-      this.ctx.save();
-      const p2 = (this.cameraX * 0.08) % 320;
-      for (let fx = -p2 - 160; fx < w + 200; fx += 110) {
-        const fy = h * 0.55;
-        const fanRot = this.animTime * 3.5 + fx;
-        this.ctx.fillStyle = '#1c0f05';
-        this.ctx.fillRect(fx - 24, fy - 24, 48, 48);
-        this.ctx.strokeStyle = '#f59e0b';
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(fx - 24, fy - 24, 48, 48);
-
-        this.ctx.fillStyle = '#d97706';
-        for (let b = 0; b < 4; b++) {
-          const ang = fanRot + (Math.PI / 2) * b;
-          this.ctx.beginPath();
-          this.ctx.arc(fx + Math.cos(ang) * 14, fy + Math.sin(ang) * 14, 7, 0, Math.PI * 2);
-          this.ctx.fill();
-        }
-      }
-      this.ctx.restore();
-
-      // Pressurized Steam Geyser Bursts
-      this.ctx.save();
-      for (let s = 0; s < 4; s++) {
-        const sx = ((s * 240 + 60 - this.cameraX * 0.1) % (w + 100)) - 50;
-        const sy = h * 0.65;
-        const burstPhase = (this.animTime * 2 + s) % 1;
-        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
-        this.ctx.beginPath();
-        this.ctx.arc(sx, sy - burstPhase * 70, 16 + burstPhase * 24, 0, Math.PI * 2);
-        this.ctx.fill();
-      }
-      this.ctx.restore();
-
-      this.drawThematicWatermark(w, h, 'STEAM FACTORY', 'STEAM MAZE 10', '#f59e0b', '#ff4400');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 11: OVERCLOCK (Superheated Plasma Reactor & Electric Substation)
-    // -------------------------------------------------------------------------
-    drawLevel11Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#080112');
-      grad.addColorStop(0.4, '#1d042b');
-      grad.addColorStop(0.78, '#440854');
-      grad.addColorStop(1, '#6b0d6f');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Tokamak Plasma Core Sphere with Magnetic Containment Rings
-      this.ctx.save();
-      const coreX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
-      const coreY = h * 0.23;
-      const coreRad = 50;
-
-      const pGlow = this.ctx.createRadialGradient(coreX, coreY, coreRad * 0.3, coreX, coreY, coreRad * 2.2);
-      pGlow.addColorStop(0, 'rgba(192, 132, 252, 0.45)');
-      pGlow.addColorStop(0.6, 'rgba(0, 240, 255, 0.15)');
-      pGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = pGlow;
-      this.ctx.beginPath();
-      this.ctx.arc(coreX, coreY, coreRad * 2.2, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.beginPath();
-      this.ctx.arc(coreX, coreY, coreRad * 0.65, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Rotating magnetic rings
-      this.ctx.strokeStyle = '#c084fc';
-      this.ctx.lineWidth = 2.4;
-      this.ctx.beginPath();
-      this.ctx.ellipse(coreX, coreY, coreRad * 1.6, coreRad * 0.45, this.animTime * 1.5, 0, Math.PI * 2);
-      this.ctx.stroke();
       this.ctx.strokeStyle = '#00f0ff';
-      this.ctx.beginPath();
-      this.ctx.ellipse(coreX, coreY, coreRad * 1.4, coreRad * 0.4, -this.animTime * 1.8, 0, Math.PI * 2);
-      this.ctx.stroke();
-      this.ctx.restore();
-
-      // Tesla Coil Towers & Branching Lightning Arcs (0.07x)
-      this.ctx.save();
-      const p1 = (this.cameraX * 0.07) % 320;
-      for (let tx = -p1 - 160; tx < w + 200; tx += 120) {
-        const th = 110 + Math.sin(tx * 0.05) * 35;
-        this.ctx.fillStyle = '#160524';
-        this.ctx.fillRect(tx + 18, h - th - 30, 14, th + 30);
-        // Toroid top
-        this.ctx.fillStyle = '#c084fc';
-        this.ctx.beginPath();
-        this.ctx.ellipse(tx + 25, h - th - 30, 18, 7, 0, 0, Math.PI * 2);
-        this.ctx.fill();
-
-        // Lightning arc between coils
-        if (Math.sin(this.animTime * 8 + tx) > 0.4) {
-          this.ctx.strokeStyle = '#ffffff';
-          this.ctx.lineWidth = 1.6;
-          this.ctx.shadowColor = '#00f0ff';
-          this.ctx.shadowBlur = 10;
-          this.ctx.beginPath();
-          this.ctx.moveTo(tx + 25, h - th - 30);
-          this.ctx.lineTo(tx + 55, h - th - 45);
-          this.ctx.lineTo(tx + 95, h - th - 25);
-          this.ctx.stroke();
-          this.ctx.shadowBlur = 0;
-        }
-      }
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#c084fc');
-      this.drawThematicWatermark(w, h, 'PLASMA REACTOR', 'OVERCLOCK 11', '#c084fc', '#00f0ff');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 12: CONVEYOR HAZARD (Automated Heavy Steel Megafactory)
-    // -------------------------------------------------------------------------
-    drawLevel12Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#0a0604');
-      grad.addColorStop(0.4, '#261207');
-      grad.addColorStop(0.78, '#592207');
-      grad.addColorStop(1, '#943505');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Overhead Molten Steel Ladle Pouring Liquid Fire
-      this.ctx.save();
-      const ladleX = w * 0.70 - (this.cameraX * 0.02) % (w * 0.5);
-      const ladleY = h * 0.20;
-      this.ctx.fillStyle = '#2b1004';
-      this.ctx.fillRect(ladleX - 28, ladleY - 20, 56, 32);
-
-      // Cascading ribbon of glowing molten steel
-      const steelGrad = this.ctx.createLinearGradient(ladleX, ladleY, ladleX, h);
-      steelGrad.addColorStop(0, '#ffffff');
-      steelGrad.addColorStop(0.4, '#ffaa00');
-      steelGrad.addColorStop(1, '#ff3b30');
-      this.ctx.fillStyle = steelGrad;
-      this.ctx.fillRect(ladleX - 5, ladleY + 12, 10, h - ladleY);
-      this.ctx.restore();
-
-      // Factory Smokestacks belching dark smoke (0.04x)
-      this.ctx.save();
-      const p1 = (this.cameraX * 0.04) % 360;
-      for (let sx = -p1 - 180; sx < w + 200; sx += 90) {
-        const sh = 120 + Math.sin(sx * 0.05) * 45;
-        this.ctx.fillStyle = '#1c0903';
-        this.ctx.fillRect(sx, h - sh - 40, 32, sh + 40);
-        // Smoke plume
-        this.ctx.fillStyle = 'rgba(20, 10, 5, 0.45)';
-        this.ctx.beginPath();
-        this.ctx.arc(sx + 16, h - sh - 55, 18, 0, Math.PI * 2);
-        this.ctx.fill();
-      }
-      this.ctx.restore();
-
-      // Automated Overhead Cranes & Cables (0.07x)
-      this.ctx.save();
-      const gantryY = h * 0.42;
-      this.ctx.strokeStyle = '#3d1606';
-      this.ctx.lineWidth = 4;
-      this.ctx.beginPath();
-      this.ctx.moveTo(0, gantryY);
-      this.ctx.lineTo(w, gantryY);
-      this.ctx.stroke();
-
-      const craneX = ((this.animTime * 60 - this.cameraX * 0.07) % (w + 200)) - 100;
-      this.ctx.fillStyle = '#ff6b00';
-      this.ctx.fillRect(craneX, gantryY, 32, 16);
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 1;
-      this.ctx.beginPath();
-      this.ctx.moveTo(craneX + 16, gantryY + 16);
-      this.ctx.lineTo(craneX + 16, gantryY + 65);
-      this.ctx.stroke();
-      this.ctx.fillStyle = '#ffee55';
-      this.ctx.fillRect(craneX + 6, gantryY + 65, 20, 8); // glowing steel block
-      this.ctx.restore();
-
-      // Showers of Welding Sparks
-      this.ctx.save();
-      for (let sp = 0; sp < 25; sp++) {
-        const spx = ((sp * 73.3 + this.animTime * 90 - this.cameraX * 0.1) % (w + 40)) - 20;
-        const spy = (sp * 41.7 + this.animTime * 180) % (h * 0.85);
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillRect(spx, spy, 2.2, 3.5);
-      }
-      this.ctx.restore();
-
-      this.drawThematicWatermark(w, h, 'HEAVY SMELTER', 'CONVEYOR HAZARD 12', '#ff6b00', '#ffee00');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 13: DATA STREAM (Pure Cyberspace Matrix Dimension)
-    // -------------------------------------------------------------------------
-    drawLevel13Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#000502');
-      grad.addColorStop(0.45, '#00170a');
-      grad.addColorStop(1, '#003a16');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Rotating Holographic Wireframe Cyber-Sphere
-      this.ctx.save();
-      const spX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
-      const spY = h * 0.22;
-      const spRad = 48;
-      const rot = this.animTime * 0.8;
-
-      this.ctx.strokeStyle = '#00ff66';
-      this.ctx.lineWidth = 1.8;
-      this.ctx.shadowColor = '#00ff66';
-      this.ctx.shadowBlur = 12;
-      this.ctx.beginPath();
-      this.ctx.arc(spX, spY, spRad, 0, Math.PI * 2);
-      this.ctx.stroke();
-      // Longitude rings
-      this.ctx.beginPath();
-      this.ctx.ellipse(spX, spY, spRad * Math.abs(Math.cos(rot)), spRad, 0, 0, Math.PI * 2);
-      this.ctx.stroke();
-      this.ctx.beginPath();
-      this.ctx.ellipse(spX, spY, spRad, spRad * Math.abs(Math.sin(rot)), 0, 0, Math.PI * 2);
-      this.ctx.stroke();
-      this.ctx.shadowBlur = 0;
-      this.ctx.restore();
-
-      // Infinite Vector Mountain Wireframe (0.03x)
-      this.ctx.save();
-      this.ctx.strokeStyle = 'rgba(0, 255, 102, 0.45)';
-      this.ctx.lineWidth = 1.4;
-      const p1 = (this.cameraX * 0.03) % 400;
-      this.ctx.beginPath();
-      this.ctx.moveTo(-100, h * 0.65);
-      for (let vx = -p1 - 200; vx < w + 200; vx += 60) {
-        const vy = h * 0.45 + Math.sin(vx * 0.03) * 50;
-        this.ctx.lineTo(vx, vy);
-      }
-      this.ctx.stroke();
-      this.ctx.restore();
-
-      // Streaming Alphanumeric Matrix Rain Columns
-      this.ctx.save();
-      this.ctx.fillStyle = '#00ff66';
-      this.ctx.font = '11px monospace';
-      const matrixChars = ['0', '1', 'F', 'X', 'A', '8', 'E', '4'];
-      for (let c = 0; c < 35; c++) {
-        const colX = ((c * 58.3 - this.cameraX * 0.06) % (w + 40)) - 20;
-        const headY = (this.animTime * 140 + c * 37) % (h + 100) - 50;
-        for (let j = 0; j < 7; j++) {
-          const cy = headY - j * 13;
-          if (cy > 0 && cy < h) {
-            this.ctx.globalAlpha = Math.max(0, 0.9 - j * 0.13);
-            this.ctx.fillText(matrixChars[(c + j) % matrixChars.length], colX, cy);
-          }
-        }
-      }
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#00ff66');
-      this.drawThematicWatermark(w, h, 'CYBERSPACE VOID', 'DATA STREAM 13', '#00ff66', '#00f0ff');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 14: GLITCH VECTOR (Corrupted Memory & Chromatic Void)
-    // -------------------------------------------------------------------------
-    drawLevel14Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#08000d');
-      grad.addColorStop(0.45, '#23002f');
-      grad.addColorStop(0.82, '#48004f');
-      grad.addColorStop(1, '#690059');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Fractured Glitch Sun with Chromatic Aberration & Slice Displacements
-      this.ctx.save();
-      const gSunX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
-      const gSunY = h * 0.24;
-      const gRad = 48;
-
-      // Chromatic Red slice
-      this.ctx.fillStyle = '#f43f5e';
-      this.ctx.beginPath();
-      this.ctx.arc(gSunX - 4, gSunY, gRad, 0, Math.PI * 2);
-      this.ctx.fill();
-      // Chromatic Cyan slice
-      this.ctx.fillStyle = '#00f0ff';
-      this.ctx.beginPath();
-      this.ctx.arc(gSunX + 4, gSunY, gRad, 0, Math.PI * 2);
-      this.ctx.fill();
-      // Main core
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.beginPath();
-      this.ctx.arc(gSunX, gSunY, gRad * 0.85, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Random glitch slice displacement bars
-      this.ctx.fillStyle = '#08000d';
-      for (let sl = -3; sl <= 3; sl++) {
-        if (Math.sin(this.animTime * 12 + sl) > 0.3) {
-          const sy = gSunY + sl * 12;
-          this.ctx.fillRect(gSunX - gRad - 15, sy, (gRad + 15) * 2, 4);
-        }
-      }
-      this.ctx.restore();
-
-      // Floating Corrupted Memory Blocks (0.06x)
-      this.ctx.save();
-      const p1 = (this.cameraX * 0.06) % 300;
-      for (let bx = -p1 - 150; bx < w + 200; bx += 80) {
-        const by = h * 0.48 + Math.sin(this.animTime * 2 + bx) * 20;
-        this.ctx.fillStyle = '#1a0026';
-        this.ctx.fillRect(bx, by, 34, 34);
-        this.ctx.strokeStyle = '#f43f5e';
-        this.ctx.lineWidth = 1.5;
-        this.ctx.strokeRect(bx, by, 34, 34);
-      }
-      this.ctx.restore();
-
-      // Horizontal Chromatic Glitch Scanline Tears
-      this.ctx.save();
-      for (let t = 0; t < 6; t++) {
-        const tearY = (t * 79 + this.animTime * 180) % h;
-        if (Math.sin(this.animTime * 8 + t) > 0.4) {
-          this.ctx.fillStyle = t % 2 === 0 ? 'rgba(0, 240, 255, 0.4)' : 'rgba(244, 63, 94, 0.4)';
-          this.ctx.fillRect(0, tearY, w, 2.5);
-        }
-      }
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#f43f5e');
-      this.drawThematicWatermark(w, h, 'GLITCH REALM', 'GLITCH VECTOR 14', '#f43f5e', '#00f0ff');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 15: SYNTAX SPRINT (Hyper-Speed Fiber Highway & Light Tunnels)
-    // -------------------------------------------------------------------------
-    drawLevel15Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#010514');
-      grad.addColorStop(0.42, '#03173b');
-      grad.addColorStop(0.8, '#093675');
-      grad.addColorStop(1, '#0e5fa8');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Infinite Horizon Light Tunnel Core
-      this.ctx.save();
-      const vanX = w * 0.5 - (this.cameraX * 0.01) % 100;
-      const vanY = h * 0.48;
-
-      const vGlow = this.ctx.createRadialGradient(vanX, vanY, 5, vanX, vanY, 160);
-      vGlow.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-      vGlow.addColorStop(0.3, 'rgba(6, 182, 212, 0.6)');
-      vGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = vGlow;
-      this.ctx.beginPath();
-      this.ctx.arc(vanX, vanY, 160, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Hyper-Speed Laser Rays Converging into Vanishing Point
-      this.ctx.strokeStyle = '#06b6d4';
-      this.ctx.lineWidth = 1.5;
-      for (let r = 0; r < 14; r++) {
-        const ang = (Math.PI * 2 / 14) * r + this.animTime * 0.4;
-        this.ctx.beginPath();
-        this.ctx.moveTo(vanX, vanY);
-        this.ctx.lineTo(vanX + Math.cos(ang) * w, vanY + Math.sin(ang) * w);
-        this.ctx.stroke();
-      }
-      this.ctx.restore();
-
-      // High-Velocity Forward Speed Streaks
-      this.ctx.save();
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 2.2;
-      for (let s = 0; s < 30; s++) {
-        const progress = ((this.animTime * 1.8 + s * 0.1) % 1);
-        const dist = progress * Math.max(w, h) * 0.7;
-        const sAng = s * 2.39;
-        const sx = w * 0.5 + Math.cos(sAng) * dist;
-        const sy = h * 0.48 + Math.sin(sAng) * dist;
-        this.ctx.globalAlpha = progress * 0.8;
-        this.ctx.beginPath();
-        this.ctx.moveTo(sx, sy);
-        this.ctx.lineTo(sx - Math.cos(sAng) * 35 * progress, sy - Math.sin(sAng) * 35 * progress);
-        this.ctx.stroke();
-      }
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#06b6d4');
-      this.drawThematicWatermark(w, h, 'DATA HIGHWAY', 'SYNTAX SPRINT 15', '#06b6d4', '#38bdf8');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 16: HYPERSPACE BEAT (Synthwave Outrun Sunset & Audio Equalizer)
-    // -------------------------------------------------------------------------
-    drawLevel16Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#0a0017');
-      grad.addColorStop(0.28, '#2a0044');
-      grad.addColorStop(0.55, '#6a0258');
-      grad.addColorStop(0.82, '#b31540');
-      grad.addColorStop(1, '#eb5828');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Iconic Retrowave Segmented Sun
-      this.ctx.save();
-      const sX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
-      const sY = h * 0.38;
-      const sRad = 58;
-
-      const sGrad = this.ctx.createLinearGradient(sX, sY - sRad, sX, sY + sRad);
-      sGrad.addColorStop(0, '#ffee44');
-      sGrad.addColorStop(0.5, '#fb7185');
-      sGrad.addColorStop(1, '#9f1239');
-      this.ctx.fillStyle = sGrad;
-      this.ctx.beginPath();
-      this.ctx.arc(sX, sY, sRad, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Blind cuts
-      this.ctx.fillStyle = '#2a0044';
-      for (let s = 10; s < sRad * 2; s += 9) {
-        if (s > sRad * 0.5) {
-          const cutY = sY - sRad + s;
-          this.ctx.fillRect(sX - sRad - 5, cutY, (sRad + 5) * 2, 3);
-        }
-      }
-      this.ctx.restore();
-
-      // Neon Wireframe Mountain Silhouette (0.03x)
-      this.ctx.save();
-      this.ctx.fillStyle = '#150024';
-      this.ctx.strokeStyle = '#fb7185';
-      this.ctx.lineWidth = 1.8;
-      const p1 = (this.cameraX * 0.03) % 400;
-      this.ctx.beginPath();
-      this.ctx.moveTo(-100, h);
-      for (let mx = -p1 - 200; mx < w + 200; mx += 70) {
-        const my = h * 0.48 + Math.sin(mx * 0.04) * 45;
-        this.ctx.lineTo(mx, my);
-      }
-      this.ctx.lineTo(w + 100, h);
-      this.ctx.closePath();
-      this.ctx.fill();
-      this.ctx.stroke();
-      this.ctx.restore();
-
-      // Giant Graphic Equalizer Bars Rising on Horizon
-      this.ctx.save();
-      const barW = 8;
-      const gap = 4;
-      const totalBars = Math.floor(w / (barW + gap));
-      for (let b = 0; b < totalBars; b++) {
-        const bx = b * (barW + gap);
-        const eqHeight = Math.abs(Math.sin(this.animTime * 6 + b * 0.3)) * 45 + 10;
-        const eqGrad = this.ctx.createLinearGradient(bx, h - 35 - eqHeight, bx, h - 35);
-        eqGrad.addColorStop(0, '#ffee44');
-        eqGrad.addColorStop(0.5, '#fb7185');
-        eqGrad.addColorStop(1, '#7e22ce');
-        this.ctx.fillStyle = eqGrad;
-        this.ctx.globalAlpha = 0.55;
-        this.ctx.fillRect(bx, h - 35 - eqHeight, barW, eqHeight);
-      }
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#fb7185');
-      this.drawThematicWatermark(w, h, 'SYNTHWAVE NEON', 'HYPERSPACE BEAT 16', '#fb7185', '#ffaa00');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 17: FORGOTTEN NEXUS (Astral Starlight Citadel & Floating Classical Ruins)
-    // -------------------------------------------------------------------------
-    drawLevel17Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#03020e');
-      grad.addColorStop(0.42, '#110936');
-      grad.addColorStop(0.8, '#26185c');
-      grad.addColorStop(1, '#472d8a');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Sacred Starlight Constellation Eye
-      this.ctx.save();
-      const eyeX = w * 0.74 - (this.cameraX * 0.02) % (w * 0.5);
-      const eyeY = h * 0.22;
-      const eyeRad = 46;
-
-      const aGlow = this.ctx.createRadialGradient(eyeX, eyeY, eyeRad * 0.3, eyeX, eyeY, eyeRad * 2);
-      aGlow.addColorStop(0, 'rgba(129, 140, 248, 0.4)');
-      aGlow.addColorStop(0.7, 'rgba(192, 132, 252, 0.15)');
-      aGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = aGlow;
-      this.ctx.beginPath();
-      this.ctx.arc(eyeX, eyeY, eyeRad * 2, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Constellation Star Points
-      this.ctx.strokeStyle = '#818cf8';
       this.ctx.lineWidth = 1.8;
       this.ctx.beginPath();
-      for (let p = 0; p < 8; p++) {
-        const ang = (Math.PI * 2 / 8) * p + this.animTime * 0.3;
-        const px = eyeX + Math.cos(ang) * eyeRad;
-        const py = eyeY + Math.sin(ang) * eyeRad;
-        if (p === 0) this.ctx.moveTo(px, py);
-        else this.ctx.lineTo(px, py);
-      }
-      this.ctx.closePath();
+      this.ctx.ellipse(coreX, coreY, coreRad * 1.4, coreRad * 0.4, -rot * 0.8, 0, Math.PI * 2);
       this.ctx.stroke();
 
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.beginPath();
-      this.ctx.arc(eyeX, eyeY, 8, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.restore();
-
-      // Floating Classical Temple Ruins & Broken Columns (0.07x)
-      this.ctx.save();
-      const p1 = (this.cameraX * 0.07) % 340;
-      for (let rx = -p1 - 170; rx < w + 200; rx += 110) {
-        const ry = h * 0.50 + Math.sin(this.animTime * 1.6 + rx) * 16;
-        this.ctx.fillStyle = '#171138';
-        this.ctx.fillRect(rx, ry, 65, 14); // floating architrave
-        this.ctx.fillRect(rx + 8, ry + 14, 12, 50); // Column 1
-        this.ctx.fillRect(rx + 45, ry + 14, 12, 35); // Broken Column 2
-        // Glowing glyph
-        this.ctx.fillStyle = '#818cf8';
-        this.ctx.globalAlpha = 0.6 + Math.sin(this.animTime * 3 + rx) * 0.3;
-        this.ctx.fillRect(rx + 11, ry + 25, 6, 6);
-      }
-      this.ctx.restore();
-
-      // Gentle Upward Streams of Stardust
-      this.ctx.save();
-      for (let d = 0; d < 35; d++) {
-        const dx = ((d * 113.3 - this.cameraX * 0.1) % (w + 40)) - 20;
-        const dy = (d * 73.1 - this.animTime * 35) % h;
-        const actY = dy < 0 ? dy + h : dy;
-        this.ctx.fillStyle = d % 2 === 0 ? '#818cf8' : '#ffffff';
-        this.ctx.globalAlpha = 0.4 + Math.sin(this.animTime * 3 + d) * 0.4;
-        this.ctx.fillRect(dx, actY, 2, 2);
-      }
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#818cf8');
-      this.drawThematicWatermark(w, h, 'CELESTIAL TEMPLE', 'FORGOTTEN NEXUS 17', '#818cf8', '#c084fc');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 18: TITAN'S GATE (Cosmic Stargate & Ancient Titan Statues)
-    // -------------------------------------------------------------------------
-    drawLevel18Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#080401');
-      grad.addColorStop(0.4, '#241305');
-      grad.addColorStop(0.78, '#472608');
-      grad.addColorStop(1, '#75410a');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Giant Cosmic Stargate Portal with Swirling Wormhole Vortex
-      this.ctx.save();
-      const gateX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
-      const gateY = h * 0.25;
-      const gRad = 54;
-
-      const gAura = this.ctx.createRadialGradient(gateX, gateY, gRad * 0.3, gateX, gateY, gRad * 2);
-      gAura.addColorStop(0, 'rgba(251, 191, 36, 0.45)');
-      gAura.addColorStop(0.7, 'rgba(245, 158, 11, 0.18)');
-      gAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = gAura;
-      this.ctx.beginPath();
-      this.ctx.arc(gateX, gateY, gRad * 2, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Stargate Outer Stone Ring
-      this.ctx.strokeStyle = '#fbbf24';
-      this.ctx.lineWidth = 6;
-      this.ctx.beginPath();
-      this.ctx.arc(gateX, gateY, gRad, 0, Math.PI * 2);
-      this.ctx.stroke();
-
-      // Swirling Wormhole Vortex
-      this.ctx.save();
-      this.ctx.translate(gateX, gateY);
-      this.ctx.rotate(this.animTime * 2);
-      for (let a = 0; a < 4; a++) {
-        this.ctx.strokeStyle = a % 2 === 0 ? '#ffffff' : '#fbbf24';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, gRad * 0.7, a * (Math.PI / 2), a * (Math.PI / 2) + Math.PI / 3);
-        this.ctx.stroke();
-      }
-      this.ctx.restore();
-      this.ctx.restore();
-
-      // Colossal Stone Titan Statues Standing Sentinel (0.05x)
-      this.ctx.save();
-      const p1 = (this.cameraX * 0.05) % 360;
-      for (let tx = -p1 - 180; tx < w + 200; tx += 120) {
-        const th = 130 + Math.sin(tx * 0.04) * 40;
-        this.ctx.fillStyle = '#1c0f04';
-        this.ctx.fillRect(tx, h - th - 40, 48, th + 40);
-        // Head
-        this.ctx.fillRect(tx + 8, h - th - 75, 32, 35);
-        // Glowing golden eye slit
-        this.ctx.fillStyle = '#fbbf24';
-        this.ctx.fillRect(tx + 14, h - th - 58, 20, 4);
-      }
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#fbbf24');
-      this.drawThematicWatermark(w, h, 'TITAN SANCTUARY', "TITAN'S GATE 18", '#fbbf24', '#ffaa00');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 19: CHRONO COLLAPSE (Supermassive Black Hole & Temporal Vortex)
-    // -------------------------------------------------------------------------
-    drawLevel19Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#020008');
-      grad.addColorStop(0.42, '#0e001e');
-      grad.addColorStop(0.78, '#24012e');
-      grad.addColorStop(1, '#3d0233');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // Colossal Supermassive Black Hole with Gravitational Lensing Accretion Disk
-      this.ctx.save();
-      const holeX = w * 0.70 - (this.cameraX * 0.02) % (w * 0.5);
-      const holeY = h * 0.26;
-      const holeRad = 44;
-
-      // Gravitational lensing outer accretion disk
-      const lensGrad = this.ctx.createRadialGradient(holeX, holeY, holeRad * 0.8, holeX, holeY, holeRad * 2.3);
-      lensGrad.addColorStop(0, '#ffffff');
-      lensGrad.addColorStop(0.3, '#c084fc');
-      lensGrad.addColorStop(0.7, '#a855f7');
-      lensGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = lensGrad;
-      this.ctx.beginPath();
-      this.ctx.ellipse(holeX, holeY, holeRad * 2.3, holeRad * 0.7, -Math.PI / 8, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // The Absolute Singularity (Pure Void Core)
-      this.ctx.fillStyle = '#000000';
-      this.ctx.beginPath();
-      this.ctx.arc(holeX, holeY, holeRad, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Bright photon ring outline
-      this.ctx.strokeStyle = '#ffffff';
-      this.ctx.lineWidth = 2.2;
-      this.ctx.shadowColor = '#c084fc';
+      this.ctx.fillStyle = '#ffaa00';
+      this.ctx.shadowColor = '#ffaa00';
       this.ctx.shadowBlur = 16;
       this.ctx.beginPath();
-      this.ctx.arc(holeX, holeY, holeRad, 0, Math.PI * 2);
-      this.ctx.stroke();
+      this.ctx.arc(coreX, coreY, 14, 0, Math.PI * 2);
+      this.ctx.fill();
       this.ctx.shadowBlur = 0;
       this.ctx.restore();
 
-      // Shattered Roman Numeral Clock Faces Drifting in Void (0.06x)
+      // Floating Sacred Monoliths & Temple Pillars (0.05x speed)
       this.ctx.save();
-      const numerals = ['XII', 'III', 'VI', 'IX'];
-      this.ctx.font = 'bold 20px serif';
-      this.ctx.fillStyle = '#c084fc';
-      for (let n = 0; n < 4; n++) {
-        const nx = ((n * 240 - this.cameraX * 0.06) % (w + 200)) - 80;
-        const ny = h * 0.44 + Math.sin(this.animTime * 1.5 + n) * 22;
-        this.ctx.globalAlpha = 0.5 + Math.sin(this.animTime * 2 + n) * 0.3;
-        this.ctx.fillText(numerals[n], nx, ny);
+      const p1 = (this.cameraX * 0.05) % 360;
+      for (let rx = -p1 - 180; rx < w + 200; rx += 75) {
+        const floatY = h * 0.48 + Math.sin(this.animTime * 1.5 + rx * 0.05) * 16;
+        this.ctx.fillStyle = '#160e1f';
+        this.ctx.fillRect(rx, floatY, 26, 75);
+
+        // Glowing Golden Glyphs on Pillars
+        this.ctx.fillStyle = '#ffaa00';
+        this.ctx.globalAlpha = 0.55 + Math.sin(this.animTime * 3 + rx) * 0.2;
+        this.ctx.fillRect(rx + 8, floatY + 12, 10, 3);
+        this.ctx.fillRect(rx + 8, floatY + 24, 10, 3);
+        this.ctx.fillRect(rx + 8, floatY + 36, 10, 3);
+        this.ctx.globalAlpha = 1;
       }
       this.ctx.restore();
 
-      // Relativistic Vertical Plasma Jet Beam
-      this.ctx.save();
-      const jetGrad = this.ctx.createLinearGradient(holeX, 0, holeX, h);
-      jetGrad.addColorStop(0, 'rgba(192, 132, 252, 0.45)');
-      jetGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
-      jetGrad.addColorStop(1, 'rgba(192, 132, 252, 0.45)');
-      this.ctx.fillStyle = jetGrad;
-      this.ctx.fillRect(holeX - 2.5, 0, 5, h);
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#a855f7');
-      this.drawThematicWatermark(w, h, 'TEMPORAL VORTEX', 'CHRONO COLLAPSE 19', '#a855f7', '#ff007f');
-    }
-
-    // -------------------------------------------------------------------------
-    // LEVEL 20: THE CHRONO CORE (Master Quantum Singularity & Gyroscope Core)
-    // -------------------------------------------------------------------------
-    drawLevel20Background(w, h, theme) {
-      const grad = this.ctx.createLinearGradient(0, 0, 0, h);
-      grad.addColorStop(0, '#04000d');
-      grad.addColorStop(0.35, '#160529');
-      grad.addColorStop(0.72, '#2e0b42');
-      grad.addColorStop(1, '#112b45');
-      this.ctx.fillStyle = grad;
-      this.ctx.fillRect(0, 0, w, h);
-
-      // The Master Chrono Core: 3 Concentric 3D Gyroscope Rings with Corona Flare
-      this.ctx.save();
-      const coreX = w * 0.72 - (this.cameraX * 0.02) % (w * 0.5);
-      const coreY = h * 0.24;
-      const coreRad = 52;
-      const rot = this.animTime * 1.8;
-
-      // Hyper-radiant corona flare
-      const flare = this.ctx.createRadialGradient(coreX, coreY, coreRad * 0.2, coreX, coreY, coreRad * 2.4);
-      flare.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-      flare.addColorStop(0.3, 'rgba(0, 240, 255, 0.55)');
-      flare.addColorStop(0.7, 'rgba(251, 191, 36, 0.25)');
-      flare.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      this.ctx.fillStyle = flare;
-      this.ctx.beginPath();
-      this.ctx.arc(coreX, coreY, coreRad * 2.4, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Singularity incandescent sphere
-      this.ctx.fillStyle = '#ffffff';
-      this.ctx.beginPath();
-      this.ctx.arc(coreX, coreY, 18, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // Gyroscope Ring 1 (Gold)
-      this.ctx.strokeStyle = '#fbbf24';
-      this.ctx.lineWidth = 3;
-      this.ctx.beginPath();
-      this.ctx.ellipse(coreX, coreY, coreRad * 1.7, coreRad * 0.55, rot * 0.7, 0, Math.PI * 2);
-      this.ctx.stroke();
-
-      // Gyroscope Ring 2 (Cyan)
-      this.ctx.strokeStyle = '#00f0ff';
-      this.ctx.lineWidth = 2.4;
-      this.ctx.beginPath();
-      this.ctx.ellipse(coreX, coreY, coreRad * 1.45, coreRad * 0.45, -rot * 0.9, 0, Math.PI * 2);
-      this.ctx.stroke();
-
-      // Gyroscope Ring 3 (Magenta)
-      this.ctx.strokeStyle = '#ff007f';
-      this.ctx.lineWidth = 2;
-      this.ctx.beginPath();
-      this.ctx.ellipse(coreX, coreY, coreRad * 1.2, coreRad * 0.38, rot * 1.3, 0, Math.PI * 2);
-      this.ctx.stroke();
-      this.ctx.restore();
-
-      // Colossal Cosmic Light Spires (0.03x)
-      this.ctx.save();
-      for (let s = 0; s < 3; s++) {
-        const sx = ((s * 340 + 80 - this.cameraX * 0.03) % (w + 200)) - 100;
-        const sGrad = this.ctx.createLinearGradient(sx, 0, sx + 20, h);
-        sGrad.addColorStop(0, 'rgba(0, 240, 255, 0.35)');
-        sGrad.addColorStop(0.5, 'rgba(251, 191, 36, 0.2)');
-        sGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        this.ctx.fillStyle = sGrad;
-        this.ctx.fillRect(sx, 0, 24, h);
-      }
-      this.ctx.restore();
-
-      // Floating Quantum Reality Crystals (0.07x)
-      this.ctx.save();
-      const p1 = (this.cameraX * 0.07) % 320;
-      for (let cx = -p1 - 160; cx < w + 200; cx += 90) {
-        const cy = h * 0.48 + Math.sin(this.animTime * 2 + cx) * 18;
-        this.ctx.fillStyle = '#0e2444';
-        this.ctx.fillRect(cx, cy, 26, 48);
-        this.ctx.strokeStyle = '#00f0ff';
-        this.ctx.lineWidth = 1.6;
-        this.ctx.strokeRect(cx, cy, 26, 48);
-      }
-      this.ctx.restore();
-
-      // Radial Cosmic Energy Ripple Waves
-      this.ctx.save();
-      const ripPhase = (this.animTime * 0.6) % 1;
-      this.ctx.strokeStyle = '#00f0ff';
-      this.ctx.lineWidth = 2;
-      this.ctx.globalAlpha = Math.max(0, 0.8 - ripPhase * 0.8);
-      this.ctx.beginPath();
-      this.ctx.arc(coreX, coreY, ripPhase * w * 0.5, 0, Math.PI * 2);
-      this.ctx.stroke();
-      this.ctx.restore();
-
-      this.drawHorizonGrid(w, h, '#00f0ff');
-      this.drawThematicWatermark(w, h, 'MASTER SINGULARITY', 'THE CHRONO CORE 20', '#00f0ff', '#fbbf24');
+      this.drawThematicWatermark(w, h, 'CELESTIAL', `SHADOW NEXUS 0${levelId}`, '#ffaa00', '#00f0ff');
     }
 
     // Shared Horizon Grid Helper
@@ -6394,18 +4716,14 @@
 
       // 1. Theme-Specific Body Gradient Fill
       const bodyGrad = this.ctx.createLinearGradient(px, py, px, py + ph);
-      if (theme.bodyGrad && theme.bodyGrad.length >= 3) {
-        bodyGrad.addColorStop(0, theme.bodyGrad[0]);
-        bodyGrad.addColorStop(0.4, theme.bodyGrad[1]);
-        bodyGrad.addColorStop(1, theme.bodyGrad[2]);
-      } else if (theme.type === 'nature') {
+      if (theme.type === 'nature') {
         bodyGrad.addColorStop(0, '#0a2416');
         bodyGrad.addColorStop(0.4, '#06170e');
         bodyGrad.addColorStop(1, '#020905');
-      } else if (theme.type === 'foundry' || theme.type === 'graveyard') {
-        bodyGrad.addColorStop(0, '#240606');
-        bodyGrad.addColorStop(0.4, '#140303');
-        bodyGrad.addColorStop(1, '#080101');
+      } else if (theme.type === 'graveyard') {
+        bodyGrad.addColorStop(0, '#1c0722');
+        bodyGrad.addColorStop(0.4, '#120417');
+        bodyGrad.addColorStop(1, '#08010b');
       } else if (theme.type === 'space') {
         bodyGrad.addColorStop(0, '#0c172e');
         bodyGrad.addColorStop(0.4, '#070e1c');
@@ -6737,6 +5055,43 @@
         this.ctx.arc(0, 0, 12, 0, Math.PI * 2);
         this.ctx.fill();
       }
+
+      // Windup Attack Warning Telegraph Indicator (Animated ! icon & pulsing hazard glow)
+      if (e.aiState === 'windup') {
+        this.ctx.save();
+        const pulse = Math.sin(this.animTime * 20) * 3;
+        const alertY = -24 + pulse;
+        this.ctx.shadowColor = '#ff0055';
+        this.ctx.shadowBlur = 14;
+        this.ctx.fillStyle = '#ff0055';
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, alertY - 10);
+        this.ctx.lineTo(8, alertY);
+        this.ctx.lineTo(0, alertY + 10);
+        this.ctx.lineTo(-8, alertY);
+        this.ctx.closePath();
+        this.ctx.fill();
+
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = 'bold 11px sans-serif';
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText('!', 0, alertY);
+        this.ctx.restore();
+      }
+
+      // Enemy Multi-HP Health Bar
+      if (e.health && (e.health > 1 || e.type === 'titan_guard' || e.type === 'patrol_drone')) {
+        this.ctx.save();
+        const maxH = e.type === 'titan_guard' ? 3 : (e.type === 'patrol_drone' ? 2 : 1);
+        const curH = Math.max(0, e.health);
+        this.ctx.fillStyle = 'rgba(5, 10, 20, 0.7)';
+        this.ctx.fillRect(-12, -18, 24, 3);
+        this.ctx.fillStyle = '#00f0ff';
+        this.ctx.fillRect(-12, -18, (curH / maxH) * 24, 3);
+        this.ctx.restore();
+      }
+
       this.ctx.restore();
     }
 
@@ -6772,6 +5127,14 @@
     drawPlayer(p, targetCtx = this.ctx) {
       const ctx = targetCtx;
       ctx.save();
+
+      // Invulnerability Damage Shield Blinking
+      if (this.invulnerableTimer > 0 && targetCtx === this.ctx) {
+        if (Math.floor(this.animTime * 22) % 2 === 0) {
+          ctx.globalAlpha = 0.35;
+        }
+      }
+
       ctx.translate(Math.round(p.x), Math.round(p.y));
       const visualScale = p.scale || 1.5;
       if (p.facing === -1) ctx.scale(-visualScale, visualScale);
@@ -6782,23 +5145,6 @@
       else if (p.state === 'idle') bobY = Math.sin(this.animTime * 4) * 1;
       else if (p.state === 'jump') bobY = -2;
       else if (p.state === 'fall') bobY = 2;
-
-      // Invulnerability flicker & cyan force-shield bubble after taking damage
-      if (p.invulnerableTimer > 0) {
-        if (Math.floor(this.animTime * 16) % 2 === 0) {
-          ctx.globalAlpha = 0.45;
-        }
-        ctx.save();
-        const shieldPulse = Math.sin(this.animTime * 12) * 2;
-        ctx.strokeStyle = '#00f0ff';
-        ctx.lineWidth = 1.5;
-        ctx.shadowColor = '#00f0ff';
-        ctx.shadowBlur = 8;
-        ctx.beginPath();
-        ctx.arc(0, bobY - 4, 25 + shieldPulse, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-      }
 
       // 1. SHADOW AURA (Dark void mist pulsing subtly behind the silhouette)
       ctx.save();
@@ -7125,15 +5471,13 @@
           this.screenShake -= dt * 10;
           if (this.screenShake < 0) this.screenShake = 0;
         }
-        if (this.damageFlashTimer > 0) {
-          this.damageFlashTimer -= dt;
-          if (this.damageFlashTimer < 0) this.damageFlashTimer = 0;
+        if (this.invulnerableTimer > 0) {
+          this.invulnerableTimer -= dt;
+          if (this.invulnerableTimer < 0) this.invulnerableTimer = 0;
         }
-
         this.updateEntities(dt);
         this.updatePhysics(dt);
         this.updateParticles(dt);
-        this.updateFloatingPopups(dt);
 
         // Camera follow
         if (this.player) {
@@ -7189,49 +5533,9 @@
 
   function nextLevel() {
     if (currentGameInstance) {
-      const nextId = currentGameInstance.currentLevelId + 1;
-      if (nextId <= 10) {
-        currentGameInstance.startLevel(nextId);
-      } else {
-        currentGameInstance.switchScreen('screen-level-select');
-        renderLevelSelectGrid(5);
-      }
+      const nextId = Math.min(20, currentGameInstance.currentLevelId + 1);
+      currentGameInstance.startLevel(nextId);
     }
-  }
-
-  function unlockAllLevels() {
-    gameStateData.unlockedLevel = 10;
-    gameStateData.allUnlockedByCheat = true;
-    persistData();
-    const activeWorld = document.querySelector('.world-btn.active');
-    const worldNum = activeWorld ? parseInt(activeWorld.dataset.world, 10) : null;
-    renderLevelSelectGrid(worldNum);
-  }
-
-  function relockLevels() {
-    delete gameStateData.allUnlockedByCheat;
-    const completedList = gameStateData.completedLevels && gameStateData.completedLevels.length > 0
-      ? gameStateData.completedLevels
-      : [];
-    const maxCompleted = completedList.length > 0 ? Math.max(...completedList) : 0;
-    gameStateData.unlockedLevel = Math.max(1, Math.min(10, maxCompleted + 1));
-    gameStateData.lastPlayedLevel = Math.min(gameStateData.lastPlayedLevel || 1, gameStateData.unlockedLevel);
-    persistData();
-    const activeWorld = document.querySelector('.world-btn.active');
-    const worldNum = activeWorld ? parseInt(activeWorld.dataset.world, 10) : 1;
-    renderLevelSelectGrid(worldNum);
-  }
-
-  let noticeTimeout = null;
-  function showLevelSelectNotice(msg) {
-    const el = document.getElementById('level-select-notice');
-    if (!el) return;
-    el.textContent = msg;
-    el.classList.remove('hidden');
-    if (noticeTimeout) clearTimeout(noticeTimeout);
-    noticeTimeout = setTimeout(() => {
-      el.classList.add('hidden');
-    }, 2800);
   }
 
   // Expose all 22 required functions on window.PulseStrider and window (Section 22)
@@ -7258,8 +5562,6 @@
     completeLevel,
     restartLevel,
     nextLevel,
-    unlockAllLevels,
-    relockLevels,
     movePlayer,
     saveBestAttempt,
     updatePlayerSpeedFromSettings,
@@ -7273,11 +5575,8 @@
       right: rightConfirmedGesture,
       leftDetected: leftHandDetected,
       rightDetected: rightHandDetected,
-      handsCount: detectedHandsCount,
-      leftLocked: handLockTracker.left.isLocked,
-      rightLocked: handLockTracker.right.isLocked
+      handsCount: detectedHandsCount
     }),
-    handLockTracker,
     getPlayer: () => (currentGameInstance ? currentGameInstance.player : null),
     getGameInstance: () => currentGameInstance
   };
@@ -7292,74 +5591,33 @@
     if (!scrollContainer) return;
     scrollContainer.innerHTML = '';
 
-    const unlockedMax = gameStateData.unlockedLevel || 1;
-    const completedCount = (gameStateData.completedLevels || []).length;
-
-    // Update campaign progress in header
-    const progressTextEl = document.getElementById('level-select-progress');
-    if (progressTextEl) {
-      progressTextEl.textContent = `CAMPAIGN: ${completedCount}/10 CLEARED • UNLOCKED UP TO: LEVEL ${String(unlockedMax).padStart(2, '0')}`;
-    }
-
-    // Update world tabs indicators
-    document.querySelectorAll('.world-btn').forEach(btn => {
-      const w = parseInt(btn.dataset.world, 10);
-      const worldFirstLevel = (w - 1) * 2 + 1;
-      const isWorldUnlocked = unlockedMax >= worldFirstLevel;
-      btn.classList.toggle('world-locked', !isWorldUnlocked);
-    });
-
     LEVELS.forEach(lvl => {
       if (filterWorld && lvl.world !== filterWorld) return;
 
-      const isUnlocked = lvl.id <= unlockedMax;
+      const isUnlocked = lvl.id <= gameStateData.unlockedLevel;
       const isCompleted = gameStateData.completedLevels.includes(lvl.id);
-      const lvlCoins = gameStateData.levelCoins ? gameStateData.levelCoins[lvl.id] : undefined;
+      const best = gameStateData.bestAttempts[lvl.id];
 
       const card = document.createElement('div');
       card.className = `level-item-card ${isCompleted ? 'completed' : ''} ${!isUnlocked ? 'locked' : ''}`;
-      if (!isUnlocked) {
-        card.setAttribute('aria-disabled', 'true');
-        card.setAttribute('title', `Complete Level ${lvl.id - 1} to unlock!`);
-      }
 
       const theme = getLevelTheme(lvl.id);
-
-      let statusHtml = '';
-      if (!isUnlocked) {
-        statusHtml = '<span class="item-status status-locked">🔒 LOCKED</span>';
-      } else if (isCompleted) {
-        statusHtml = '<span class="item-status status-completed">✓ COMPLETE</span>';
-      } else {
-        statusHtml = '<span class="item-status status-ready">▶ READY</span>';
-      }
-
       card.innerHTML = `
         <div class="card-top-row">
           <span class="item-num">LEVEL ${String(lvl.id).padStart(2, '0')}</span>
           <span class="theme-pill">${theme.icon} ${theme.themeTitle}</span>
         </div>
         <strong class="item-name">${lvl.name}</strong>
-        ${statusHtml}
-        ${isUnlocked && lvlCoins !== undefined ? `<span class="item-best">🪙 Coins: ${lvlCoins}</span>` : ''}
-        ${!isUnlocked ? `<span class="item-lock-hint">Clear Level ${lvl.id - 1}</span>` : ''}
+        <span class="item-status">${isCompleted ? '✓ COMPLETE' : (isUnlocked ? 'READY' : '🔒 LOCKED')}</span>
+        ${best ? `<span class="item-best">Best: ${best} Attempt${best > 1 ? 's' : ''}</span>` : ''}
       `;
 
-      card.addEventListener('click', () => {
-        if (!isUnlocked) {
-          sound.playLocked();
-          card.classList.remove('shake');
-          void card.offsetWidth; // force reflow for animation restart
-          card.classList.add('shake');
-          showLevelSelectNotice(`🔒 Level ${lvl.id} is locked! Complete Level ${lvl.id - 1} first.`);
-          return;
-        }
-
-        sound.playClick();
-        gameStateData.lastPlayedLevel = lvl.id;
-        persistData();
-        currentGameInstance.startLevel(lvl.id);
-      });
+      if (isUnlocked) {
+        card.addEventListener('click', () => {
+          sound.playClick();
+          currentGameInstance.startLevel(lvl.id);
+        });
+      }
 
       scrollContainer.appendChild(card);
     });
@@ -7389,23 +5647,18 @@
         openPlayerNameModal(() => {
           gameStateData.settings.controlMode = 'touch';
           persistData();
-          game.startLevel(gameStateData.lastPlayedLevel || 1);
+          game.startLevel(gameStateData.unlockedLevel || 1);
         });
         return;
       }
       gameStateData.settings.controlMode = 'touch';
       persistData();
-      game.startLevel(gameStateData.lastPlayedLevel || 1);
+      game.startLevel(gameStateData.unlockedLevel || 1);
     });
 
     document.getElementById('btn-menu-level-select').addEventListener('click', () => {
       sound.playClick();
-      const currentLevel = gameStateData.lastPlayedLevel || 1;
-      const targetWorld = Math.ceil(currentLevel / 2);
-      document.querySelectorAll('.world-btn').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === targetWorld);
-      });
-      renderLevelSelectGrid(targetWorld);
+      renderLevelSelectGrid(1);
       game.switchScreen('screen-level-select');
     });
 
@@ -7427,7 +5680,6 @@
 
     document.getElementById('btn-menu-settings').addEventListener('click', () => {
       sound.playClick();
-      syncSettingsUI();
       game.switchScreen('screen-settings');
     });
 
@@ -7481,10 +5733,10 @@
     const errPlayerName = document.getElementById('player-name-error');
     if (inputPlayerName) {
       inputPlayerName.addEventListener('input', () => {
-        const val = inputPlayerName.value.trim().toUpperCase();
+        const val = inputPlayerName.value.trim();
         if (val && checkPlayerNameExisted(val)) {
           if (errPlayerName) {
-            errPlayerName.textContent = 'Name is reserved for AI champion';
+            errPlayerName.textContent = 'name is existed';
             errPlayerName.classList.remove('hidden');
           }
           inputPlayerName.classList.add('has-error');
@@ -7504,7 +5756,7 @@
       if (res.success) {
         gameStateData.settings.controlMode = 'camera';
         persistData();
-        game.startLevel(gameStateData.lastPlayedLevel || 1);
+        game.startLevel(gameStateData.unlockedLevel || 1);
       } else {
         const errBox = document.getElementById('cam-denied-error-box');
         if (errBox) {
@@ -7514,63 +5766,11 @@
       }
     });
 
-    const btnStartLowRamCv = document.getElementById('btn-start-low-ram-cv');
-    if (btnStartLowRamCv) {
-      btnStartLowRamCv.addEventListener('click', async () => {
-        sound.playClick();
-        applyPerfProfile('low_ram', false);
-        const res = await startCamera();
-        if (res.success) {
-          gameStateData.settings.controlMode = 'camera';
-          persistData();
-          showPerfToast('🚀 Low-RAM Mode Active (MediaPipe Lite • 60 FPS)');
-          game.startLevel(gameStateData.lastPlayedLevel || 1);
-        } else {
-          const errBox = document.getElementById('cam-denied-error-box');
-          if (errBox) {
-            errBox.classList.remove('hidden');
-            errBox.textContent = `Camera error: ${res.error}.`;
-          }
-        }
-      });
-    }
-
-    const btnStartLowRamAi = document.getElementById('btn-start-low-ram-ai');
-    if (btnStartLowRamAi) {
-      btnStartLowRamAi.addEventListener('click', async () => {
-        sound.playClick();
-        applyPerfProfile('low_spec', false);
-        const res = await startCamera();
-        if (res.success) {
-          gameStateData.settings.controlMode = 'camera';
-          persistData();
-          showPerfToast('🤖 Lite AI Mode Active (1 Hand)');
-          game.startLevel(gameStateData.lastPlayedLevel || 1);
-        } else {
-          const errBox = document.getElementById('cam-denied-error-box');
-          if (errBox) {
-            errBox.classList.remove('hidden');
-            errBox.textContent = `Camera error: ${res.error}.`;
-          }
-        }
-      });
-    }
-
-    const btnQuickToggleLowRam = document.getElementById('btn-quick-toggle-low-ram');
-    if (btnQuickToggleLowRam) {
-      btnQuickToggleLowRam.addEventListener('click', () => {
-        sound.playClick();
-        const currentIsLowRam = gameStateData.settings.perfProfile === 'low_ram' || gameStateData.settings.cameraEngine === 'cv';
-        const newProfile = currentIsLowRam ? 'balanced' : 'low_ram';
-        applyPerfProfile(newProfile, true);
-      });
-    }
-
     document.getElementById('btn-fallback-to-touch').addEventListener('click', () => {
       sound.playClick();
       gameStateData.settings.controlMode = 'touch';
       persistData();
-      game.startLevel(gameStateData.lastPlayedLevel || 1);
+      game.startLevel(gameStateData.unlockedLevel || 1);
     });
 
     document.getElementById('btn-perm-back-menu').addEventListener('click', () => {
@@ -7589,51 +5789,13 @@
       masterAttackBtn.addEventListener('pointerdown', handler);
     }
 
-    // Touch Controls Fallback D-Pad with Multi-Touch Support
-    const touchLeft = document.getElementById('btn-touch-left');
-    const touchRight = document.getElementById('btn-touch-right');
-    const touchJump = document.getElementById('btn-touch-jump');
-    const touchAttack = document.getElementById('btn-touch-attack');
-
-    if (touchLeft) {
-      touchLeft.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        touchMoveDirection = 'LEFT';
-      });
-      touchLeft.addEventListener('pointerup', () => {
-        if (touchMoveDirection === 'LEFT') touchMoveDirection = null;
-      });
-      touchLeft.addEventListener('pointercancel', () => {
-        if (touchMoveDirection === 'LEFT') touchMoveDirection = null;
-      });
-    }
-
-    if (touchRight) {
-      touchRight.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        touchMoveDirection = 'RIGHT';
-      });
-      touchRight.addEventListener('pointerup', () => {
-        if (touchMoveDirection === 'RIGHT') touchMoveDirection = null;
-      });
-      touchRight.addEventListener('pointercancel', () => {
-        if (touchMoveDirection === 'RIGHT') touchMoveDirection = null;
-      });
-    }
-
-    if (touchJump) {
-      touchJump.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        movePlayerUp();
-      });
-    }
-
-    if (touchAttack) {
-      touchAttack.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        triggerAttack();
-      });
-    }
+    // Touch Controls Fallback D-Pad
+    document.getElementById('btn-touch-left').addEventListener('pointerdown', () => movePlayer('LEFT'));
+    document.getElementById('btn-touch-left').addEventListener('pointerup', () => movePlayer('CENTER'));
+    document.getElementById('btn-touch-right').addEventListener('pointerdown', () => movePlayer('RIGHT'));
+    document.getElementById('btn-touch-right').addEventListener('pointerup', () => movePlayer('CENTER'));
+    document.getElementById('btn-touch-jump').addEventListener('click', () => movePlayer('UP'));
+    document.getElementById('btn-touch-attack').addEventListener('click', () => triggerAttack());
 
     // HUD Actions
     document.getElementById('btn-toggle-camera').addEventListener('click', async () => {
@@ -7675,7 +5837,6 @@
     document.getElementById('btn-pause-resume').addEventListener('click', () => {
       sound.playClick();
       game.state = 'PLAYING';
-      game.lastTimestamp = performance.now();
       const worldIdx = (game.currentLevel.world || 1) - 1;
       sound.startBGM(game.currentLevel.bpm, worldIdx);
       game.switchScreen(null);
@@ -7688,17 +5849,12 @@
 
     document.getElementById('btn-pause-settings').addEventListener('click', () => {
       sound.playClick();
-      syncSettingsUI();
       game.switchScreen('screen-settings');
     });
 
     document.getElementById('btn-pause-level-select').addEventListener('click', () => {
       sound.playClick();
-      const currentWorld = Math.ceil(((game.currentLevelId) || 1) / 2);
-      document.querySelectorAll('.world-btn').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === currentWorld);
-      });
-      renderLevelSelectGrid(currentWorld);
+      renderLevelSelectGrid(1);
       game.switchScreen('screen-level-select');
     });
 
@@ -7721,12 +5877,7 @@
 
     document.getElementById('btn-complete-level-select').addEventListener('click', () => {
       sound.playClick();
-      const nextLvl = Math.min(10, ((game.currentLevelId) || 1) + 1);
-      const targetWorld = Math.ceil(nextLvl / 2);
-      document.querySelectorAll('.world-btn').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === targetWorld);
-      });
-      renderLevelSelectGrid(targetWorld);
+      renderLevelSelectGrid(1);
       game.switchScreen('screen-level-select');
     });
 
@@ -7748,24 +5899,19 @@
       restartLevel(false);
     });
 
-    const btnFailedLeaderboard = document.getElementById('btn-failed-leaderboard');
-    if (btnFailedLeaderboard) {
-      btnFailedLeaderboard.addEventListener('click', () => {
-        sound.playClick();
-        renderLeaderboard();
-        game.switchScreen('screen-leaderboard');
-      });
-    }
-
     document.getElementById('btn-failed-level-select').addEventListener('click', () => {
       sound.playClick();
-      const currentWorld = Math.ceil(((game.currentLevelId) || 1) / 2);
-      document.querySelectorAll('.world-btn').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.world, 10) === currentWorld);
-      });
-      renderLevelSelectGrid(currentWorld);
+      renderLevelSelectGrid(1);
       game.switchScreen('screen-level-select');
     });
+
+    const failedMainMenuBtn = document.getElementById('btn-failed-main-menu');
+    if (failedMainMenuBtn) {
+      failedMainMenuBtn.addEventListener('click', () => {
+        sound.playClick();
+        game.switchScreen('screen-main-menu');
+      });
+    }
 
     // World Tabs
     document.querySelectorAll('.world-btn').forEach(btn => {
@@ -7781,105 +5927,6 @@
       sound.playClick();
       game.switchScreen('screen-main-menu');
     });
-
-    const btnRelockLevels = document.getElementById('btn-relock-levels');
-    if (btnRelockLevels) {
-      btnRelockLevels.addEventListener('click', () => {
-        sound.playClick();
-        relockLevels();
-        showLevelSelectNotice(`🔒 Relocked to completed levels (Level 1–${gameStateData.unlockedLevel})`);
-      });
-    }
-
-    const btnUnlockAll = document.getElementById('btn-unlock-all-levels');
-    if (btnUnlockAll) {
-      btnUnlockAll.addEventListener('click', () => {
-        sound.playClick();
-        unlockAllLevels();
-        const activeWorld = document.querySelector('.world-btn.active');
-        const worldNum = activeWorld ? parseInt(activeWorld.dataset.world, 10) : 1;
-        renderLevelSelectGrid(worldNum);
-      });
-    }
-
-    // Performance & Hardware Scaling Controls
-    const setPerfEl = document.getElementById('set-perf-profile');
-    if (setPerfEl) {
-      setPerfEl.addEventListener('change', (e) => {
-        applyPerfProfile(e.target.value, true);
-      });
-    }
-
-    const setEngineEl = document.getElementById('set-camera-engine');
-    if (setEngineEl) {
-      setEngineEl.addEventListener('change', (e) => {
-        gameStateData.settings.cameraEngine = e.target.value;
-        persistData();
-        if (e.target.value === 'cv' && mediaPipeHandsInstance) {
-          try {
-            if (typeof mediaPipeHandsInstance.close === 'function') mediaPipeHandsInstance.close();
-          } catch (err) {}
-          mediaPipeHandsInstance = null;
-          isMediaPipeReady = false;
-        }
-        showPerfToast(e.target.value === 'cv' ? '🚀 Direct Color CV Active (0% AI / <1MB RAM)' : '🤖 MediaPipe AI Active');
-      });
-    }
-
-    const setTrackingHandsEl = document.getElementById('set-tracking-hands');
-    if (setTrackingHandsEl) {
-      setTrackingHandsEl.addEventListener('change', (e) => {
-        gameStateData.settings.trackingHands = parseInt(e.target.value, 10) || 1;
-        persistData();
-        if (mediaPipeHandsInstance && isMediaPipeReady) {
-          try {
-            mediaPipeHandsInstance.setOptions({
-              maxNumHands: gameStateData.settings.trackingHands
-            });
-          } catch (err) {}
-        }
-        showPerfToast(`🖐️ Tracking Hands: ${gameStateData.settings.trackingHands}`);
-      });
-    }
-
-    const setRenderScaleEl = document.getElementById('set-render-scale');
-    if (setRenderScaleEl) {
-      setRenderScaleEl.addEventListener('change', (e) => {
-        gameStateData.settings.renderScale = parseFloat(e.target.value) || 0.75;
-        persistData();
-        if (game && typeof game.triggerResize === 'function') {
-          game.triggerResize();
-        }
-        showPerfToast(`🖥️ Render Scale: ${Math.round(gameStateData.settings.renderScale * 100)}%`);
-      });
-    }
-
-    const btnQuickOptimizeLowRam = document.getElementById('btn-quick-optimize-low-ram');
-    if (btnQuickOptimizeLowRam) {
-      btnQuickOptimizeLowRam.addEventListener('click', () => {
-        sound.playClick();
-        applyPerfProfile('low_ram', true);
-        syncSettingsUI();
-      });
-    }
-
-    const toggleShadowsBtn = document.getElementById('toggle-shadows');
-    if (toggleShadowsBtn) {
-      toggleShadowsBtn.addEventListener('click', (e) => {
-        const active = e.target.classList.toggle('active');
-        e.target.textContent = active ? 'ON' : 'OFF';
-        gameStateData.settings.shadows = active;
-        persistData();
-      });
-    }
-
-    const setParticlesEl = document.getElementById('set-particles');
-    if (setParticlesEl) {
-      setParticlesEl.addEventListener('change', (e) => {
-        gameStateData.settings.particleBudget = e.target.value;
-        persistData();
-      });
-    }
 
     // Settings Screen Controls
     document.getElementById('set-control-mode').addEventListener('change', (e) => {
@@ -7953,44 +6000,15 @@
       persistData();
     });
 
-    const btnSettingsUnlock = document.getElementById('btn-settings-unlock-all');
-    if (btnSettingsUnlock) {
-      btnSettingsUnlock.addEventListener('click', () => {
-        sound.playClick();
-        unlockAllLevels();
-        alert('All 10 levels across all 5 chapters are unlocked!');
-      });
-    }
-
-    const btnSettingsRelock = document.getElementById('btn-settings-relock');
-    if (btnSettingsRelock) {
-      btnSettingsRelock.addEventListener('click', () => {
-        sound.playClick();
-        relockLevels();
-        alert(`Levels relocked! Currently unlocked up to Level ${gameStateData.unlockedLevel}.`);
-      });
-    }
-
     document.getElementById('btn-reset-records').addEventListener('click', () => {
-      if (confirm('Reset campaign progress? This will lock levels 2-10 and reset your coin records.')) {
+      if (confirm('Reset all unlocked levels, attempts history, and best records?')) {
         localStorage.removeItem(STORAGE_KEY);
         loadSavedData();
-        // Reset player active record on leaderboard
-        const pName = (gameStateData.playerName || 'SHADOW').trim().toUpperCase();
-        const list = getLeaderboardData();
-        const pIdx = list.findIndex(e => (e.name || '').trim().toUpperCase() === pName);
-        if (pIdx >= 0) {
-          list[pIdx].score = 0;
-          list[pIdx].levels = 0;
-          list[pIdx].coins = 0;
-          saveLeaderboardData(list);
-        }
-        syncCurrentPlayerToLeaderboard();
         updatePlayerSpeedFromSettings();
         updatePlayerNameUI();
         if (setPlayerSpeedEl) setPlayerSpeedEl.value = gameStateData.settings.playerSpeed || 'normal';
-        renderLevelSelectGrid(1);
-        alert('Progress reset! Level 1 is ready, and levels 2-10 are locked.');
+        renderLevelSelectGrid();
+        alert('All records reset.');
       }
     });
 
@@ -8008,103 +6026,42 @@
       game.switchScreen('screen-main-menu');
     });
 
-    // =========================================================================
-    // Multi-Key Simultaneous Keyboard Controls Engine
-    // Supports holding Run (A/D) + Jump (W/Up) + Attack (Space/J) simultaneously
-    // =========================================================================
-    function isKeyJump(k, code) {
-      return code === 'KeyW' || code === 'ArrowUp' || code === 'Numpad8' || k === 'w' || k === 'W' || k === 'ArrowUp' || k === 'Up';
-    }
-    function isKeyAttackAction(k, code) {
-      return code === 'Space' || code === 'KeyJ' || code === 'KeyK' || code === 'KeyZ' || code === 'KeyX' || code === 'KeyF' || code === 'KeyE' || code === 'Enter' || code === 'ShiftRight' || k === ' ' || k === 'j' || k === 'J' || k === 'z' || k === 'Z' || k === 'x' || k === 'X' || k === 'f' || k === 'F' || k === 'e' || k === 'E' || k === 'Enter';
-    }
-    function isKeyLeft(k, code) {
-      return code === 'KeyA' || code === 'ArrowLeft' || code === 'Numpad4' || k === 'a' || k === 'A' || k === 'ArrowLeft' || k === 'Left';
-    }
-    function isKeyRight(k, code) {
-      return code === 'KeyD' || code === 'ArrowRight' || code === 'Numpad6' || k === 'd' || k === 'D' || k === 'ArrowRight' || k === 'Right';
-    }
+    // Multi-key tracking set for simultaneous diagonal movement & attacks (Section 4)
+    window.activeKeyboardKeys = new Set();
 
     window.addEventListener('keydown', (e) => {
-      // Don't intercept if user is typing into an input field (e.g. player name modal)
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      const key = e.key.toUpperCase();
+      const code = e.code.toUpperCase();
 
-      // Pause shortcut
-      if (e.key === 'Escape' || e.code === 'KeyP') {
+      if (code === 'SPACE') {
+        e.preventDefault();
+        if (game.state === 'PLAYING') triggerAttack();
+        return;
+      }
+
+      if (key === 'R' && game.state === 'PLAYING') {
+        document.getElementById('modal-confirm-restart').classList.remove('hidden');
+        return;
+      }
+
+      if (e.key === 'Escape') {
         if (game.state === 'PLAYING') {
           game.state = 'PAUSED';
           sound.stopBGM();
           game.switchScreen('modal-game-paused');
-          return;
         }
+        return;
       }
 
-      if (game.state !== 'PLAYING') return;
-
-      const code = e.code || '';
-      const key = e.key || '';
-
-      // Register key in activeKeys Set for continuous multi-key physics update
-      if (code) activeKeys.add(code);
-      if (key) {
-        activeKeys.add(key.toLowerCase());
-        activeKeys.add(key);
-      }
-
-      // Track directional key priority for smooth rollover
-      if (isKeyLeft(key, code)) {
-        lastHorizontalKey = 'LEFT';
-      } else if (isKeyRight(key, code)) {
-        lastHorizontalKey = 'RIGHT';
-      }
-
-      // Jump Impulse (instant trigger on initial press, supports run + jump)
-      if (isKeyJump(key, code) && !e.repeat) {
-        movePlayerUp();
-      }
-
-      // Attack Trigger (instant trigger on initial press, supports run + attack)
-      if (isKeyAttackAction(key, code) && !e.repeat) {
-        e.preventDefault();
-        triggerAttack();
-      }
-
-      // Quick Restart Level
-      if ((code === 'KeyR' || key === 'r' || key === 'R') && !e.repeat) {
-        const restartModal = document.getElementById('modal-confirm-restart');
-        if (restartModal) restartModal.classList.remove('hidden');
-      }
-
-      // Prevent page scrolling on Space and Arrow keys
-      if (code === 'Space' || key === ' ' || code === 'ArrowUp' || code === 'ArrowDown' || code === 'ArrowLeft' || code === 'ArrowRight') {
-        e.preventDefault();
-      }
+      window.activeKeyboardKeys.add(key);
+      window.activeKeyboardKeys.add(code);
     });
 
     window.addEventListener('keyup', (e) => {
-      const code = e.code || '';
-      const key = e.key || '';
-      if (code) activeKeys.delete(code);
-      if (key) {
-        activeKeys.delete(key.toLowerCase());
-        activeKeys.delete(key.toUpperCase());
-        activeKeys.delete(key);
-      }
-
-      // Directional rollover update when a horizontal key is released
-      if (isKeyLeft(key, code)) {
-        const rightStillHeld = activeKeys.has('KeyD') || activeKeys.has('ArrowRight') || activeKeys.has('Numpad6') || activeKeys.has('d') || activeKeys.has('D') || activeKeys.has('Right');
-        lastHorizontalKey = rightStillHeld ? 'RIGHT' : null;
-      } else if (isKeyRight(key, code)) {
-        const leftStillHeld = activeKeys.has('KeyA') || activeKeys.has('ArrowLeft') || activeKeys.has('Numpad4') || activeKeys.has('a') || activeKeys.has('A') || activeKeys.has('Left');
-        lastHorizontalKey = leftStillHeld ? 'LEFT' : null;
-      }
-    });
-
-    window.addEventListener('blur', () => {
-      activeKeys.clear();
-      touchMoveDirection = null;
-      lastHorizontalKey = null;
+      const key = e.key.toUpperCase();
+      const code = e.code.toUpperCase();
+      window.activeKeyboardKeys.delete(key);
+      window.activeKeyboardKeys.delete(code);
     });
   }
 
@@ -8113,14 +6070,11 @@
   // =========================================================================
   window.addEventListener('DOMContentLoaded', () => {
     loadSavedData();
-    const initProfile = gameStateData.settings.perfProfile || detectHardwareCapabilities();
-    applyPerfProfile(initProfile, false);
     updatePlayerSpeedFromSettings();
     updatePlayerNameUI();
     const game = new GameEngine();
     currentGameInstance = game;
     bindUIEvents(game);
-    syncSettingsUI();
     renderLevelSelectGrid();
 
     // Expose API for headless test automation and external checks
