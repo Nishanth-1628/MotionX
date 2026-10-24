@@ -1,27 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>MotionX - Real-Time Camera Hand-Controlled Game</title>
-  <meta name="description"
-    content="MotionX: A real-time camera hand-controlled 2D pixel-art platformer built purely with HTML, CSS, and JavaScript.">
-
+  <meta name="description" content="MotionX: A real-time camera hand-controlled 2D pixel-art platformer built purely with HTML, CSS, and JavaScript.">
+  
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Press+Start+2P&family=Rajdhani:wght@600;700;800&display=swap"
-    rel="stylesheet">
-
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Press+Start+2P&family=Rajdhani:wght@600;700;800&display=swap" rel="stylesheet">
+  
   <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
   <div id="game-app" class="game-app">
-
+    
     <!-- MAIN GAMEPLAY AREA -->
     <main id="game-area-container" class="game-area-container">
       <!-- AMBIENT BACKGROUND WATERMARK -->
@@ -32,24 +26,40 @@
 
       <!-- IN-GAME HUD -->
       <header id="game-hud" class="game-hud hidden">
-        <!-- Top-Left: 3 Lives & Coins System (Strictly NO Attempts) -->
-        <div class="hud-card hud-attempts-card" id="hud-stats-card">
-          <div class="hud-level-text" id="hud-level-display">LEVEL 01</div>
-          <div class="hud-lives-row" id="hud-lives-display">
-            <span class="hud-stat-tag">LIVES:</span>
-            <span class="hud-hearts" id="hud-hearts-display">❤️❤️❤️</span>
+        <!-- Top-Left: Player 3-Life Stats & Score -->
+        <div class="hud-card hud-player-card">
+          <div class="hud-top-meta">
+            <span class="hud-level-text" id="hud-level-display">LVL 01 • 🏙️ SMART CITY</span>
+            <!-- Hidden attempt counter kept for save-data backward compatibility -->
+            <span class="hidden" id="hud-attempt-display">CURRENT ATTEMPT: 01</span>
+            <span class="hidden" id="hud-best-display">BEST ATTEMPT: --</span>
           </div>
-          <div class="hud-coins-row" id="hud-coins-display">
-            <span class="hud-stat-tag">COINS:</span>
-            <span class="hud-coin-val" id="hud-coins-display-val">🪙 00 / 12</span>
+
+          <!-- 3-LIFE SYSTEM (❤️ 3 Glowing Hearts) -->
+          <div class="hud-lives-row">
+            <div class="hud-hearts-container" id="hud-hearts-container" aria-label="Player Lives">
+              <span class="hud-heart active" id="hud-heart-1" title="Life 1">❤️</span>
+              <span class="hud-heart active" id="hud-heart-2" title="Life 2">❤️</span>
+              <span class="hud-heart active" id="hud-heart-3" title="Life 3">❤️</span>
+            </div>
+            <span class="hud-lives-count" id="hud-lives-display">3 / 3 LIVES</span>
           </div>
-          <div class="hud-checkpoint-row" id="hud-checkpoint-display">
-            <span class="hud-stat-tag">CP:</span>
-            <span class="hud-cp-val" id="hud-checkpoint-display-val">🚩 START</span>
+
+          <!-- Counters: Score, Coins, Enemies -->
+          <div class="hud-counters-row">
+            <div class="hud-counter-pill" title="Score">
+              <span class="hud-pill-tag">SCORE</span>
+              <span class="hud-pill-val gold-glow" id="hud-score-val">0</span>
+            </div>
+            <div class="hud-counter-pill" title="Coins Collected">
+              <span class="hud-pill-icon">🪙</span>
+              <span class="hud-pill-val" id="hud-coins-val">0</span>
+            </div>
+            <div class="hud-counter-pill" title="Enemies Defeated">
+              <span class="hud-pill-icon">⚔️</span>
+              <span class="hud-pill-val" id="hud-enemies-val">0</span>
+            </div>
           </div>
-          <!-- Backward compatibility elements -->
-          <span id="hud-attempt-display" class="hidden"></span>
-          <span id="hud-best-display" class="hidden"></span>
         </div>
 
         <!-- Top-Center: Dual-Hand On-Screen Gesture Indicator -->
@@ -80,13 +90,26 @@
           </div>
         </div>
 
-        <!-- Top-Right: Action Buttons -->
-        <div class="hud-actions">
-          <button id="btn-toggle-camera" class="hud-btn" title="Toggle Camera Preview" aria-label="Toggle Camera">📷
-            CAM</button>
-          <button id="btn-restart-attempt" class="hud-btn" title="Restart Level" aria-label="Restart Level">🔄
-            RETRY</button>
-          <button id="btn-pause-game" class="hud-btn" title="Pause Game" aria-label="Pause Game">⏸ PAUSE</button>
+        <!-- Top-Right: Missions Tracker + Quick Action Buttons -->
+        <div class="hud-right-stack">
+          <div class="hud-card hud-mission-card" id="hud-mission-card">
+            <div class="mission-header-row">
+              <span class="mission-badge">🎯 MISSION</span>
+              <span class="mission-status-pill" id="hud-mission-status">ACTIVE</span>
+            </div>
+            <div class="mission-title" id="hud-mission-title">CYBER HARVEST</div>
+            <div class="mission-desc" id="hud-mission-desc">Collect 5 energy coins</div>
+            <div class="mission-bar-track">
+              <div class="mission-bar-fill" id="hud-mission-fill" style="width: 0%;"></div>
+            </div>
+            <div class="mission-progress-text" id="hud-mission-progress">0 / 5</div>
+          </div>
+
+          <div class="hud-actions">
+            <button id="btn-toggle-camera" class="hud-btn" title="Toggle Camera Preview" aria-label="Toggle Camera">📷 CAM</button>
+            <button id="btn-restart-attempt" class="hud-btn" title="Restart Game" aria-label="Restart Attempt">🔄 RETRY</button>
+            <button id="btn-pause-game" class="hud-btn" title="Pause Game" aria-label="Pause Game">⏸ PAUSE</button>
+          </div>
         </div>
       </header>
 
@@ -96,12 +119,12 @@
           <span class="cam-title">📷 DUAL-HAND CAMERA PREVIEW</span>
           <span id="cam-tracking-badge" class="cam-badge badge-searching">SEARCHING</span>
         </div>
-
+        
         <div class="cam-preview-box">
           <video id="webcam-video" playsinline muted autoplay></video>
           <canvas id="camera-overlay-canvas"></canvas>
-          <div id="cam-hand-reticle-left" class="cam-hand-reticle reticle-left hidden">✊</div>
-          <div id="cam-hand-reticle-right" class="cam-hand-reticle reticle-right hidden">👉</div>
+          <div id="cam-hand-reticle-left" class="cam-hand-reticle reticle-left">✊</div>
+          <div id="cam-hand-reticle-right" class="cam-hand-reticle reticle-right">👉</div>
           <div id="cam-hand-reticle" class="cam-hand-reticle hidden">✋</div>
         </div>
 
@@ -121,31 +144,43 @@
         </div>
       </aside>
 
-      <!-- HAND CONTROLS GESTURE GUIDE PANEL (TWO-HAND CONTROL, STOP POINT REMOVED) -->
+      <!-- HAND CONTROLS GESTURE GUIDE PANEL (SIMULTANEOUS 8-WAY + ATTACK) -->
       <aside id="gesture-guide-panel" class="gesture-guide-panel">
         <div class="guide-panel-header">
-          <span class="guide-title">TWO-HAND CONTROLS</span>
+          <span class="guide-title">DUAL-SIGN CONTROLS</span>
         </div>
         <div class="guide-diagram">
-          <div class="guide-subhead">RIGHT HAND ➜ MOVE</div>
+          <div class="guide-subhead">GESTURE DIRECTIONS & DIAGONALS</div>
           <div class="guide-row guide-row-up">
-            <div class="guide-cell" id="guide-cell-up">
+            <div class="guide-cell" id="guide-cell-upleft" title="Up + Left (Diagonal)">
+              <span class="guide-icon">↖</span>
+              <span class="guide-text">UP-L</span>
+            </div>
+            <div class="guide-cell" id="guide-cell-up" title="Up (Jump)">
               <span class="guide-icon">☝️</span>
               <span class="guide-text">UP</span>
             </div>
+            <div class="guide-cell" id="guide-cell-upright" title="Up + Right (Diagonal)">
+              <span class="guide-icon">↗</span>
+              <span class="guide-text">UP-R</span>
+            </div>
           </div>
           <div class="guide-row guide-row-mid">
-            <div class="guide-cell" id="guide-cell-left">
+            <div class="guide-cell" id="guide-cell-left" title="Move Left">
               <span class="guide-icon">👈</span>
               <span class="guide-text">LEFT</span>
             </div>
-            <div class="guide-cell" id="guide-cell-right">
+            <div class="guide-cell guide-cell-center" id="guide-cell-neutral" title="Stop">
+              <span class="guide-icon">✋</span>
+              <span class="guide-text">STOP</span>
+            </div>
+            <div class="guide-cell" id="guide-cell-right" title="Move Right">
               <span class="guide-icon">👉</span>
               <span class="guide-text">RIGHT</span>
             </div>
           </div>
           <div class="guide-row guide-row-down">
-            <div class="guide-cell" id="guide-cell-down">
+            <div class="guide-cell" id="guide-cell-down" title="Crouch / Drop">
               <span class="guide-icon">👇</span>
               <span class="guide-text">DOWN</span>
             </div>
@@ -154,13 +189,14 @@
           <!-- Hidden stop element for backwards compatibility -->
           <div id="guide-cell-none" class="hidden"></div>
 
-          <div class="guide-subhead guide-subhead-right">LEFT HAND ➜ ATTACK</div>
+          <div class="guide-subhead guide-subhead-right">FIST ➜ ATTACK</div>
           <div class="guide-row guide-row-attack">
-            <div class="guide-cell guide-cell-attack" id="guide-cell-attack">
+            <div class="guide-cell guide-cell-attack" id="guide-cell-attack" title="Closed Fist Attack">
               <span class="guide-icon">✊</span>
               <span class="guide-text">ATTACK</span>
             </div>
           </div>
+          <div class="guide-simul-tip">⚡ 2 Signs work simultaneously! (☝️ UP + 👉 RIGHT = Jump & Move)</div>
         </div>
       </aside>
 
@@ -200,16 +236,20 @@
         </div>
       </div>
 
-      <!-- KEYBOARD MULTI-KEY HINT BAR (Visible during desktop gameplay) -->
-      <div id="keyboard-controls-hint" class="keyboard-controls-hint hidden">
-        <span class="kb-hint-pill"><kbd>A</kbd> / <kbd>D</kbd> or <kbd>◀</kbd> <kbd>▶</kbd> Run</span>
-        <span class="kb-hint-pill"><kbd>W</kbd> or <kbd>▲</kbd> Jump</span>
-        <span class="kb-hint-pill"><kbd>SPACE</kbd> Attack</span>
-        <span class="kb-hint-pill kb-combo-pill">⚡ Multi-Key Active (Hold Run + Jump + Slash)</span>
-      </div>
-
       <!-- ATTACK FLASH FEEDBACK BANNER -->
       <div id="attack-banner-fx" class="attack-banner-fx">⚔️ ATTACK!</div>
+
+      <!-- FULL-SCREEN DAMAGE RED FLASH VIGNETTE -->
+      <div id="damage-flash-overlay" class="damage-flash-overlay"></div>
+
+      <!-- MISSION COMPLETED CELEBRATION OVERLAY -->
+      <div id="mission-complete-banner" class="mission-complete-banner hidden">
+        <span class="mcb-icon">🏆</span>
+        <div class="mcb-text-block">
+          <span class="mcb-title">MISSION COMPLETED!</span>
+          <span class="mcb-reward">+500 BONUS POINTS</span>
+        </div>
+      </div>
     </main>
 
     <!-- UI SCREENS & OVERLAYS -->
@@ -238,14 +278,6 @@
           <button id="btn-menu-change-pilot" class="btn-inline-pill" type="button">EDIT NAME</button>
         </div>
 
-        <div class="menu-low-ram-bar">
-          <button id="btn-quick-toggle-low-ram" class="low-ram-pill-btn" type="button"
-            title="Click to toggle Low-RAM Laptop Compatibility">
-            <span class="pill-dot">⚡</span>
-
-          </button>
-        </div>
-
         <div class="menu-action-buttons">
           <button id="btn-menu-enable-camera" class="cyber-btn btn-hero">
             <span class="btn-icon">📷</span>
@@ -257,7 +289,7 @@
           </button>
           <button id="btn-menu-level-select" class="cyber-btn cyber-btn-secondary">
             <span class="btn-icon">🗺️</span>
-            <span>LEVEL SELECT (10 LEVELS)</span>
+            <span>LEVEL SELECT (20 LEVELS)</span>
           </button>
           <button id="btn-menu-leaderboard" class="cyber-btn cyber-btn-secondary">
             <span class="btn-icon">🏆</span>
@@ -274,7 +306,7 @@
         </div>
 
         <footer class="menu-legal">
-          <span>3 LIVES PER LEVEL • COLLECT COINS • REAL-TIME AI HAND TRACKING</span>
+          <span>❤️ 3-LIFE COMBAT SYSTEM • COIN HARVEST & MISSIONS • REAL-TIME AI HAND TRACKING</span>
         </footer>
       </div>
     </div>
@@ -302,8 +334,7 @@
 
         <div class="privacy-notice-box">
           <strong>🔒 100% Client-Side Privacy:</strong>
-          Camera feed is processed strictly inside your local browser. No video is recorded, saved, or uploaded to any
-          server.
+          Camera feed is processed strictly inside your local browser. No video is recorded, saved, or uploaded to any server.
         </div>
 
         <div id="cam-denied-error-box" class="error-banner hidden">
@@ -311,25 +342,8 @@
         </div>
 
         <div class="modal-btn-stack">
-          <button id="btn-request-cam-permit" class="cyber-btn cyber-btn-primary">🎮 START CAMERA (UNIVERSAL
-            AUTO)</button>
-          <button id="btn-fallback-to-touch" class="cyber-btn cyber-btn-secondary">TOUCH / KEYBOARD CONTROL</button>
-        </div>
-
-        <!-- LOW-RAM COMPATIBILITY SECTION -->
-        <div class="low-ram-quick-banner" id="low-ram-quick-banner">
-          <div class="low-ram-badge">⚡ LOW-RAM LAPTOP COMPATIBILITY (2GB - 4GB)</div>
-          <div class="low-ram-desc">Default Auto mode is already optimized for smooth performance on all laptops. If you
-            have extreme 2GB RAM limits:</div>
-          <div class="low-ram-btn-grid">
-            <button id="btn-start-low-ram-ai" class="cyber-btn cyber-btn-secondary" type="button">🤖 START LITE AI (2
-              HANDS)</button>
-            <button id="btn-start-low-ram-cv" class="cyber-btn cyber-btn-accent" type="button">⚡ START ULTRA LOW-RAM (2
-              HANDS)</button>
-          </div>
-        </div>
-
-        <div class="modal-btn-stack" style="margin-top: 8px;">
+          <button id="btn-request-cam-permit" class="cyber-btn cyber-btn-primary">ENABLE CAMERA</button>
+          <button id="btn-fallback-to-touch" class="cyber-btn cyber-btn-secondary">TOUCH CONTROL</button>
           <button id="btn-perm-back-menu" class="cyber-btn cyber-btn-ghost">BACK TO MENU</button>
         </div>
       </div>
@@ -339,31 +353,22 @@
     <div id="screen-level-select" class="screen-overlay hidden">
       <div class="modal-card wide-card">
         <div class="card-top-row">
-          <div>
-            <h2 class="modal-title">MISSION ARCHIVE (10 LEVELS)</h2>
-            <div id="level-select-progress" class="level-select-progress">PROGRESS: 0/10 CLEARED • UNLOCKED: LEVEL 01
-            </div>
-          </div>
+          <h2 class="modal-title">MISSION ARCHIVE (20 LEVELS)</h2>
           <div class="world-tab-group" id="world-tab-group">
-            <button class="world-btn active" data-world="1">🏙️ CH 1: CITY</button>
-            <button class="world-btn" data-world="2">🌲 CH 2: NATURE</button>
-            <button class="world-btn" data-world="3">🌋 CH 3: FOUNDRY</button>
-            <button class="world-btn" data-world="4">🌌 CH 4: CYBER</button>
-            <button class="world-btn" data-world="5">🏛️ CH 5: RUINS</button>
+            <button class="world-btn active" data-world="1">🏙️ CITY</button>
+            <button class="world-btn" data-world="2">🌲 NATURE</button>
+            <button class="world-btn" data-world="3">🪦 GRAVE</button>
+            <button class="world-btn" data-world="4">🌌 SPACE</button>
+            <button class="world-btn" data-world="5">🏛️ RUINS</button>
           </div>
         </div>
 
-        <div id="level-select-notice" class="level-select-toast hidden"></div>
-
         <div class="level-cards-scroll" id="level-cards-scroll">
-          <!-- 10 Level Cards Injected Dynamically (2 per chapter) -->
+          <!-- 20 Level Cards Injected Dynamically -->
         </div>
 
         <div class="modal-btn-row">
-          <button id="btn-level-select-back" class="cyber-btn cyber-btn-primary">BACK TO MENU</button>
-          <button id="btn-relock-levels" class="cyber-btn cyber-btn-secondary"
-            title="Relock levels to match actual completed missions">🔒 RELOCK MISSIONS</button>
-          <button id="btn-unlock-all-levels" class="cyber-btn cyber-btn-ghost hidden">⚡ UNLOCK ALL (DEV)</button>
+          <button id="btn-level-select-back" class="cyber-btn cyber-btn-secondary">BACK TO MENU</button>
         </div>
       </div>
     </div>
@@ -374,24 +379,18 @@
         <div class="victory-anim-icon">🎉</div>
         <h2 class="victory-header">LEVEL COMPLETE!</h2>
         <div class="victory-subtitle" id="complete-level-name">LEVEL 01</div>
-        <div id="complete-unlock-badge" class="badge-level-unlocked hidden">🔓 LEVEL 02 UNLOCKED!</div>
 
         <div class="complete-stats-row">
           <div class="stat-pill">
-            <span class="stat-title">LIVES LEFT</span>
-            <span class="stat-number" id="complete-lives-val">❤️❤️❤️</span>
+            <span class="stat-title">ATTEMPTS USED</span>
+            <span class="stat-number" id="complete-attempts-val">1</span>
           </div>
           <div class="stat-pill highlight-pill">
-            <span class="stat-title">COINS COLLECTED</span>
-            <span class="stat-number" id="complete-coins-val">🪙 12 / 12</span>
-            <div id="complete-all-coins-badge" class="badge-new-record hidden">⭐ ALL COINS!</div>
+            <span class="stat-title">BEST ATTEMPTS</span>
+            <span class="stat-number" id="complete-best-val">1</span>
+            <div id="complete-new-best-badge" class="badge-new-record hidden">🏆 NEW BEST!</div>
           </div>
         </div>
-
-        <!-- Backward-compatibility elements -->
-        <span id="complete-attempts-val" class="hidden"></span>
-        <span id="complete-best-val" class="hidden"></span>
-        <span id="complete-new-best-badge" class="hidden"></span>
 
         <div class="modal-btn-stack">
           <button id="btn-complete-next" class="cyber-btn cyber-btn-primary">NEXT LEVEL</button>
@@ -402,23 +401,39 @@
       </div>
     </div>
 
-    <!-- 5. LEVEL FAILED SCREEN (Section 9) -->
+    <!-- 5. GAME OVER SCREEN (Section 3 & 9) -->
     <div id="screen-level-failed" class="screen-overlay hidden">
-      <div class="modal-card defeat-modal">
-        <div class="defeat-anim-icon">⚡</div>
-        <h2 class="defeat-header">LEVEL FAILED</h2>
-        <div class="defeat-attempt-tag" id="defeat-attempt-display">OUT OF LIVES</div>
+      <div class="modal-card defeat-modal game-over-modal">
+        <div class="defeat-anim-icon">💀</div>
+        <h2 class="defeat-header game-over-header">GAME OVER</h2>
+        <div class="defeat-attempt-tag" id="defeat-attempt-display">0 LIVES REMAINING • NEURAL LINK SEVERED</div>
 
-        <div class="defeat-stats-pill">
-          <span class="stat-title">LIVES REMAINING</span>
-          <span class="stat-number danger-text" id="defeat-lives-display">🖤🖤🖤 (0/3)</span>
-          <span id="defeat-total-attempts" class="hidden">0</span>
+        <div class="gameover-stats-grid">
+          <div class="stat-pill highlight-pill">
+            <span class="stat-title">FINAL SCORE</span>
+            <span class="stat-number gold-glow" id="gameover-score-val">0</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-title">COINS COLLECTED</span>
+            <span class="stat-number" id="gameover-coins-val">0</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-title">ENEMIES DEFEATED</span>
+            <span class="stat-number" id="gameover-enemies-val">0</span>
+          </div>
+          <div class="stat-pill">
+            <span class="stat-title">MISSION PROGRESS</span>
+            <span class="stat-number mission-stat-sm" id="gameover-mission-val">FAILED</span>
+          </div>
         </div>
 
+        <!-- Hidden compatibility element -->
+        <span id="defeat-total-attempts" class="hidden">0</span>
+
         <div class="modal-btn-stack">
-          <button id="btn-failed-retry" class="cyber-btn cyber-btn-primary">RETRY (3 LIVES)</button>
-          <button id="btn-failed-leaderboard" class="cyber-btn cyber-btn-secondary">🏆 LEADERBOARD</button>
-          <button id="btn-failed-level-select" class="cyber-btn cyber-btn-ghost">LEVEL SELECT</button>
+          <button id="btn-failed-retry" class="cyber-btn cyber-btn-primary">🔄 RESTART GAME</button>
+          <button id="btn-failed-level-select" class="cyber-btn cyber-btn-secondary">🗺️ LEVEL SELECT</button>
+          <button id="btn-failed-main-menu" class="cyber-btn cyber-btn-ghost">🏠 MAIN MENU</button>
         </div>
       </div>
     </div>
@@ -427,7 +442,7 @@
     <div id="modal-confirm-restart" class="screen-overlay hidden modal-backdrop">
       <div class="modal-card mini-card">
         <h3 class="mini-modal-title">RESTART LEVEL?</h3>
-        <p class="mini-modal-desc">Level will restart from the beginning with 3 lives restored.</p>
+        <p class="mini-modal-desc">Your current attempt will be restarted and count towards your attempts.</p>
         <div class="modal-btn-row">
           <button id="btn-restart-yes" class="cyber-btn cyber-btn-primary">YES, RESTART</button>
           <button id="btn-restart-cancel" class="cyber-btn cyber-btn-secondary">CANCEL</button>
@@ -441,7 +456,7 @@
         <h3 class="mini-modal-title">GAME PAUSED</h3>
         <div class="modal-btn-stack">
           <button id="btn-pause-resume" class="cyber-btn cyber-btn-primary">RESUME</button>
-          <button id="btn-pause-restart" class="cyber-btn cyber-btn-secondary">RESTART LEVEL</button>
+          <button id="btn-pause-restart" class="cyber-btn cyber-btn-secondary">RESTART ATTEMPT</button>
           <button id="btn-pause-leaderboard" class="cyber-btn cyber-btn-secondary">🏆 LEADERBOARD</button>
           <button id="btn-pause-settings" class="cyber-btn cyber-btn-secondary">SETTINGS</button>
           <button id="btn-pause-level-select" class="cyber-btn cyber-btn-secondary">LEVEL SELECT</button>
@@ -456,86 +471,6 @@
         <h2 class="modal-title">SETTINGS</h2>
 
         <div class="settings-scroll-list">
-          <!-- ⚡ HARDWARE PERFORMANCE & LOW-PROCESSOR LAPTOP PRESET -->
-          <div class="setting-row perf-highlight-row">
-            <div class="setting-meta">
-              <strong>⚡ PERFORMANCE PRESET (HARDWARE SCALING)</strong>
-              <small>Optimizes AI hand tracking & graphics for low RAM & integrated GPU laptops</small>
-            </div>
-            <select id="set-perf-profile" class="cyber-input-select">
-              <option value="auto" selected>⚡ UNIVERSAL AUTO (HIGH &amp; LOW LAPTOPS)</option>
-              <option value="low_ram">🚀 LOW-RAM LAPTOP (2GB - 4GB RAM • ZERO LAG)</option>
-              <option value="low_spec">⚡ LOW-PROCESSOR LAPTOP</option>
-              <option value="balanced">⚖️ BALANCED (STANDARD LAPTOP)</option>
-              <option value="high">✨ HIGH / ULTRA (DEDICATED GPU)</option>
-              <option value="cv_only">🚀 ULTRA-FAST CV (ZERO AI / ANCIENT LAPTOP)</option>
-            </select>
-          </div>
-
-          <!-- 1-CLICK QUICK OPTIMIZE BUTTON -->
-          <div class="setting-row"
-            style="background: rgba(0, 240, 255, 0.08); border: 1px dashed var(--primary-cyan); border-radius: 6px; padding: 10px;">
-            <div class="setting-meta">
-              <strong>⚡ ONE-CLICK LOW-RAM AUTO-SETUP</strong>
-              <small>Instantly applies zero-WASM CV, single-hand tracking, and 75% resolution scaling</small>
-            </div>
-            <button id="btn-quick-optimize-low-ram" class="cyber-btn cyber-btn-accent" type="button"
-              style="padding: 6px 14px; font-size: 11px;">OPTIMIZE NOW</button>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-meta">
-              <strong>CAMERA TRACKING ENGINE</strong>
-              <small>MediaPipe AI Lite (100% Genuine Hands Only)</small>
-            </div>
-            <select id="set-camera-engine" class="cyber-input-select">
-              <option value="mediapipe" selected>🤖 MEDIAPIPE LITE AI (HIGH ACCURACY • HANDS ONLY)</option>
-            </select>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-meta">
-              <strong>AI TRACKING HANDS</strong>
-              <small>Dual-hand tracking enables simultaneous movement (Right) and attack/jump (Left)</small>
-            </div>
-            <select id="set-tracking-hands" class="cyber-input-select">
-              <option value="2" selected>2 HANDS (DUAL-HAND CONTROL • DEFAULT)</option>
-              <option value="1">1 HAND (SINGLE-HAND CONTROL)</option>
-            </select>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-meta">
-              <strong>GAME RENDER RESOLUTION</strong>
-              <small>Scaling down internal canvas cuts framebuffer VRAM and integrated GPU fillrate by up to 50%</small>
-            </div>
-            <select id="set-render-scale" class="cyber-input-select">
-              <option value="0.75" selected>75% SCALE (LOW-RAM LAPTOP - FAST)</option>
-              <option value="0.85">85% SCALE (BALANCED)</option>
-              <option value="1.0">100% SCALE (NATIVE RESOLUTION)</option>
-            </select>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-meta">
-              <strong>CANVAS GLOW & SHADOWS</strong>
-              <small>Disable Gaussian blur shadows to free up CPU / integrated GPU fillrate</small>
-            </div>
-            <button id="toggle-shadows" class="toggle-pill">OFF</button>
-          </div>
-
-          <div class="setting-row">
-            <div class="setting-meta">
-              <strong>PARTICLE BUDGET</strong>
-              <small>Scale explosion and confetti particles for zero stutter</small>
-            </div>
-            <select id="set-particles" class="cyber-input-select">
-              <option value="low" selected>LOW (15 PARTICLES - SMOOTH)</option>
-              <option value="medium">MEDIUM (30 PARTICLES)</option>
-              <option value="high">HIGH (50 PARTICLES)</option>
-            </select>
-          </div>
-
           <div class="setting-row">
             <div class="setting-meta">
               <strong>CONTROL MODE</strong>
@@ -609,9 +544,9 @@
               <small>Calibrate horizontal running speed for hand control</small>
             </div>
             <select id="set-player-speed" class="cyber-input-select">
-              <option value="slow">SLOW & PRECISE (3.60)</option>
-              <option value="normal" selected>NORMAL (4.50) [Recommended]</option>
-              <option value="fast">FAST (5.80)</option>
+              <option value="slow">SLOW & PRECISE (5.75)</option>
+              <option value="normal" selected>NORMAL (6.60) [Default (+50% Boost)]</option>
+              <option value="fast">FAST (8.25)</option>
             </select>
           </div>
 
@@ -626,21 +561,10 @@
             </div>
           </div>
 
-          <div class="setting-row">
-            <div class="setting-meta">
-              <strong>MISSION LOCK STATUS</strong>
-              <small>Unlock levels one by one as completed, or test all missions</small>
-            </div>
-            <div class="setting-actions-row">
-              <button id="btn-settings-relock" class="cyber-btn cyber-btn-secondary">🔒 RELOCK MISSIONS</button>
-              <button id="btn-settings-unlock-all" class="cyber-btn cyber-btn-ghost">🔓 UNLOCK ALL (DEV)</button>
-            </div>
-          </div>
-
           <div class="setting-row danger-row">
             <div class="setting-meta">
               <strong>RESET PROGRESS</strong>
-              <small>Lock levels 2-10, clear cleared missions, and reset coins</small>
+              <small>Clear unlocked levels and best attempt records</small>
             </div>
             <button id="btn-reset-records" class="btn-danger-outline">RESET SAVE</button>
           </div>
@@ -660,36 +584,33 @@
         <div class="guide-scroll-list">
           <div class="guide-card">
             <h3>OBJECTIVE</h3>
-            <p>Start at the beginning, navigate platforms, avoid bottomless gaps, defeat enemies with your blade, and
-              reach the Goal Flag!</p>
+            <p>Start at the beginning, navigate platforms, avoid bottomless gaps, defeat enemies with your blade, and reach the Goal Flag!</p>
           </div>
 
           <div class="guide-card">
-            <h3>3 LIVES, CHECKPOINTS & COINS</h3>
-            <p>You start each level with <strong>3 Lives (❤️❤️❤️)</strong>! Touch glowing holographic <strong>🚩
-                Checkpoint Beacons</strong> to save your mid-level progress. When taking damage or falling into pits,
-              you respawn safely at your active checkpoint with temporary force-shields while preserving all collected
-              coins!</p>
+            <h3>THREE-LIFE COMBAT SYSTEM</h3>
+            <p>You begin every run with <strong>3 Lives (❤️❤️❤️)</strong>! Touching damaging hazards or getting hit by enemy attacks deducts exactly 1 Life. An <strong>invulnerability shield (blinking effect)</strong> protects you for 1.6 seconds after taking a hit. If lives reach zero, it is Game Over!</p>
           </div>
 
           <div class="guide-card">
-            <h3>MOTIONX: CAMERA & DUAL-HAND MULTI-CONTROLS</h3>
+            <h3>COINS & COMBAT REWARDS</h3>
+            <p>• <strong>🪙 Glowing Gold Coins:</strong> +100 points each. Collect coins throughout platforms and hazard corridors!<br>
+            • <strong>⚔️ Defeating Enemies:</strong> +250 points each. Strike with your blade before they charge!<br>
+            • <strong>🎯 Mission Objectives:</strong> Complete sector objectives for +500 bonus points!</p>
+          </div>
+
+          <div class="guide-card">
+            <h3>MOTIONX: TWO-HAND CAMERA CONTROLS</h3>
             <ul>
-              <li><strong>RIGHT HAND ➜ MOVEMENT & JUMP:</strong> Point index finger (👈 Left, 👉 Right, ☝️ Jump, 👇
-                Down). Point diagonally ↗️ / ↖️ to <strong>Run and Jump simultaneously</strong>!</li>
-              <li><strong>LEFT HAND ➜ ATTACK & SECONDARY JUMP:</strong> Make a closed fist ✊ to Attack! Point index ☝️
-                to Jump!</li>
-              <li><strong>SIMULTANEOUS MULTI-ACTION:</strong> Run with right hand while punching or jumping with left
-                hand, or hold keyboard keys (<kbd>A</kbd>/<kbd>D</kbd> + <kbd>W</kbd> + <kbd>SPACE</kbd>)
-                simultaneously!</li>
+              <li><strong>RIGHT HAND ➜ MOVEMENT (8-WAY):</strong> Point your index finger in any direction (👈 Left, 👉 Right, ☝️ Up/Jump, 👇 Down, ↖ Up-Left, ↗ Up-Right). Hold to maintain velocity! Open hand ✋ stops.</li>
+              <li><strong>LEFT HAND ➜ ATTACK:</strong> Make a closed fist ✊ to strike with your cyber blade! 400ms cooldown.</li>
+              <li><strong>SIMULTANEOUS ACTION:</strong> Run and jump diagonally (Up + Right / Up + Left) while attacking simultaneously!</li>
             </ul>
           </div>
 
           <div class="guide-card">
             <h3>DESKTOP KEYBOARD CONTROLS</h3>
-            <p><kbd>W</kbd> or <kbd>▲</kbd> = Jump • <kbd>A</kbd> or <kbd>◀</kbd> = Move Left • <kbd>D</kbd> or
-              <kbd>▶</kbd> = Move Right • <kbd>SPACE</kbd> = Attack • <kbd>R</kbd> = Restart • <kbd>ESC</kbd> = Pause
-            </p>
+            <p><kbd>W</kbd> / <kbd>▲</kbd> = Jump • <kbd>A</kbd> / <kbd>◀</kbd> = Move Left • <kbd>D</kbd> / <kbd>▶</kbd> = Move Right • <kbd>S</kbd> / <kbd>▼</kbd> = Crouch • <kbd>W+A</kbd> = Jump Left • <kbd>W+D</kbd> = Jump Right • <kbd>SPACE</kbd> = Attack (usable while moving!) • <kbd>R</kbd> = Restart • <kbd>ESC</kbd> = Pause</p>
           </div>
         </div>
 
@@ -709,8 +630,16 @@
         <form id="form-player-name" class="player-name-form" onsubmit="return false;">
           <div class="input-field-group">
             <label for="input-player-name" class="cyber-input-label">PLAYER NAME</label>
-            <input type="text" id="input-player-name" class="cyber-input-text" placeholder="Enter name (e.g. Phoenix)"
-              maxlength="16" autocomplete="off" spellcheck="false" required />
+            <input
+              type="text"
+              id="input-player-name"
+              class="cyber-input-text"
+              placeholder="Enter name (e.g. Phoenix)"
+              maxlength="16"
+              autocomplete="off"
+              spellcheck="false"
+              required
+            />
           </div>
 
           <div id="player-name-error" class="player-name-error hidden" role="alert">name is existed</div>
@@ -732,7 +661,7 @@
       <div class="modal-card wide-card leaderboard-card">
         <div class="leaderboard-header-row">
           <div class="leaderboard-title-group">
-            <div class="brand-tag">⚡ REAL-TIME SYNCED RANKINGS</div>
+            <div class="brand-tag">GLOBAL RANKINGS</div>
             <h2 class="modal-title leaderboard-title">🏆 HALL OF FAME</h2>
           </div>
           <button id="btn-leaderboard-change-name" class="cyber-btn-sm cyber-btn-secondary" type="button">
@@ -752,7 +681,7 @@
           </div>
           <div class="lb-stat-box">
             <span class="lb-stat-label">CLEARED</span>
-            <span class="lb-stat-val" id="lb-your-cleared">0 / 10</span>
+            <span class="lb-stat-val" id="lb-your-cleared">0 / 20</span>
           </div>
         </div>
 
@@ -784,5 +713,4 @@
   <!-- Pure Vanilla JavaScript Entry -->
   <script src="script.js"></script>
 </body>
-
 </html>
